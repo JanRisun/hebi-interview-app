@@ -6,6 +6,7 @@ import { FavStore } from '../utils/FavStore';
 import { UserTagStore } from '../utils/UserTagStore';
 import { RecorderBar } from '../utils/RecorderBar';
 import { TtsButton } from '../utils/TtsButton';
+import { TtsFloatButton } from '../utils/TsFloatButton';
 import { FONT, RADIUS, SPACE } from '../utils/Theme';
 
 // 预设快捷标记（点击切换：未加→添加，已加→移除）
@@ -294,34 +295,42 @@ struct Detail {
   }
 
   build() {
-    Column() {
-      Row() {
-        Text('‹ 返回')
-          .fontSize(FONT.body)
-          .fontColor($r('app.color.brand'))
-          .onClick(() => router.back())
-        Text(this.fav ? '★ 已收藏' : '☆ 收藏')
-          .fontSize(FONT.bodySm)
-          .fontColor(this.fav ? $r('app.color.favorite') : $r('app.color.text_secondary'))
-          .onClick(() => this.toggleFav())
-      }
-      .width('92%')
-      .margin({ top: SPACE.md, bottom: SPACE.sm })
-      .justifyContent(FlexAlign.SpaceBetween)
+    Stack({ alignContent: Alignment.BottomStart }) {
+      // 底层：页面内容
+      Column() {
+        Row() {
+          Text('‹ 返回')
+            .fontSize(FONT.body)
+            .fontColor($r('app.color.brand'))
+            .onClick(() => router.back())
+          Text(this.fav ? '★ 已收藏' : '☆ 收藏')
+            .fontSize(FONT.bodySm)
+            .fontColor(this.fav ? $r('app.color.favorite') : $r('app.color.text_secondary'))
+            .onClick(() => this.toggleFav())
+        }
+        .width('92%')
+        .margin({ top: SPACE.md, bottom: SPACE.sm })
+        .justifyContent(FlexAlign.SpaceBetween)
 
-      if (this.article) {
-        this.articleView()
-      } else if (this.question) {
-        this.questionView()
-      } else {
-        Text('加载中…')
-          .fontSize(FONT.bodySm)
-          .fontColor($r('app.color.text_secondary'))
-          .margin(SPACE.xl)
+        if (this.article) {
+          this.articleView()
+        } else if (this.question) {
+          this.questionView()
+        } else {
+          Text('加载中…')
+            .fontSize(FONT.bodySm)
+            .fontColor($r('app.color.text_secondary'))
+            .margin(SPACE.xl)
+        }
       }
+      .width('100%')
+      .height('100%')
+      .backgroundColor($r('app.color.background'))
+
+      // 上层：TTS 悬浮播控按钮（全局覆盖）
+      TtsFloatButton()
     }
     .width('100%')
     .height('100%')
-    .backgroundColor($r('app.color.background'))
   }
 }

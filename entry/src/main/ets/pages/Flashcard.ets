@@ -5,6 +5,7 @@ import { DataStore } from '../model/DataStore';
 import { Section } from '../model/Types';
 import { FONT, RADIUS, SPACE } from '../utils/Theme';
 import { TtsButton } from '../utils/TtsButton';
+import { TtsFloatButton } from '../utils/TsFloatButton';
 
 interface Card {
   title: string;
@@ -56,7 +57,9 @@ export struct FlashcardView {
   }
 
   build() {
-    Column() {
+    Stack({ alignContent: Alignment.BottomStart }) {
+      // 底层：速记卡页面内容
+      Column() {
       // 顶部标题 + 进度
       Row() {
         Text('速记卡')
@@ -189,9 +192,15 @@ export struct FlashcardView {
           .fontColor($r('app.color.text_tertiary'))
           .margin({ top: 14 })
       }
+      }
+      .width('100%')
+      .height('100%')
+      .backgroundColor($r('app.color.background'))
+
+      // 上层：TTS 悬浮播控按钮
+      TtsFloatButton()
     }
     .width('100%')
     .height('100%')
-    .backgroundColor($r('app.color.background'))
   }
 }
