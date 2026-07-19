@@ -175,10 +175,10 @@ export struct PracticeView {
         .then(() => {
           hilog.info(0x1000, 'Practice', '计时振动成功 kind=%{public}s', kind);
         })
-        .catch((err: Error) => {
+        .catch((err: unknown) => {
           hilog.error(0x1000, 'Practice', '计时振动失败 kind=%{public}s err=%{public}s', kind, JSON.stringify(err));
         });
-    } catch (e: Error) {
+    } catch (e) {
       hilog.error(0x1000, 'Practice', '计时振动异常 %{public}s', JSON.stringify(e));
     }
   }
