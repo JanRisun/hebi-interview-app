@@ -179,13 +179,12 @@ export struct FlashcardView {
         .margin({ top: 20 })
 
         // 语音播报：朗读当前可见面（正面要点 / 背面详解）
-        Row({ space: 12 }) {
-          TtsButton({
-            text: this.flipped ? this.cards[this.idx].body : this.cards[this.idx].title,
-            label: '🔊 朗读当前面'
-          })
-        }
-        .width('88%')
+        // 直接作为 Column 子项（不用 Row 包裹），让 TtsButton 按内容宽度自适应成紧凑药丸；
+        // 之前用 Row({space:12}) 包单子项导致 ArkUI 横向宽度约束传递异常，按钮被压成空药丸。
+        TtsButton({
+          text: this.flipped ? this.cards[this.idx].body : this.cards[this.idx].title,
+          label: '🔊 朗读当前面'
+        })
         .margin({ top: 12 })
 
         Text('提示：像百词斩一样先凭记忆回想，再翻转核对；左滑下一张，右滑进收藏')

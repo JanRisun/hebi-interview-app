@@ -31,15 +31,16 @@ export struct TtsButton {
   }
 
   build() {
-    // 用 Row + Text 自定义药丸按钮，保证始终可见、有文字
+    // 用 Row + Text 自定义药丸按钮，保证始终可见、有文字。
+    // 约束最小宽度防止在嵌套 Row/Column 中被父容器压扁导致 Text 裁切为空。
     Row() {
       Text(this.btnLabel)
         .fontSize(FONT.bodySm)
         .fontColor($r('app.color.on_primary'))
-        .maxLines(1)
-        .textOverflow({ overflow: TextOverflow.Ellipsis })
+        // 按钮文案不需要省略号（非列表场景）；去掉 Ellipsis 避免极端压缩时文字全消失
     }
     .height(36)
+    .constraintSize({ minWidth: 100 })  // 防御性最小宽度：确保至少放得下 "▶ 继续"/"⏸ 暂停"
     .padding({ left: SPACE.md, right: SPACE.md })
     .backgroundColor(
       this.isActive
