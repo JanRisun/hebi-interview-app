@@ -103,6 +103,27 @@ export struct TtsFloatButton {
     return idx >= 0 && idx < SPEED_LABELS.length ? SPEED_LABELS[idx] : `${this.speed}x`;
   }
 
+  // 进度时间文本（格式 MM:ss/MM:ss）
+  // CoreSpeechKit TTS 无原生进度回调，当前用句子级进度估算；无播放时显示占位符
+  private get progressText(): string {
+    if (!this.playing) return '--:--/--:--';
+    // 从 TtsManager 获取当前句索引和总句数做估算进度
+    const current: number = TtsManager.currentSegment;
+    const total: number = TtsManager.totalSegments;
+    if (total <= 0) return '00:00/--:--';
+    // 粗略估算：假设平均每句读 5 秒（后续可接入真实引擎回调优化）
+    const elapsedSec: number = Math.round(current * 5);
+    const totalSec: number = Math.round(total * 5);
+    return `${this.formatTime(elapsedSec)}/${this.formatTime(totalSec)}`;
+  }
+
+  // 秒数 → MM:ss 格式
+  private formatTime(sec: number): string {
+    const m: number = Math.floor(sec / 60);
+    const s: number = sec % 60;
+    return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  }
+
   // 当前总偏移量（基准位置 + 拖拽瞬时偏移）
   // 坐标系：BottomStart 锚点（按钮默认贴左下角），translate x 右为正、y 下为正。
   // 因此「距底 baseY」需取负映射到 translate.y（向上 = 减小距底）。
@@ -229,7 +250,7 @@ export struct TtsFloatButton {
   @Builder
   buildCollapsedBtn(active: boolean) {
     Column() {
-      Text('🎧')
+      Text('语')   // 纯汉字，避免 emoji 在部分机型渲染失败（见 commit 8d0ebb7）
         .fontSize(22)
     }
     .width(this.BTN_SIZE)
@@ -296,93 +317,70 @@ export struct TtsFloatButton {
     return { radius: 12, color: '#25000000', offsetX: 0, offsetY: 4 };
   }
 
-  // ====== 展开完整控制面板 ======
+  // ====== 展开完整控制栏（参考学习强国：单行横条） ======
+  // 布局：[标题(截断)...] [进度] [暂停] [播放] [关闭]
+  // 全部挤在一行，紧凑不遮挡内容
   @Builder
   buildExpandedPanel() {
-    Column() {
-      // 第一行：标题 + 关闭
-      Row() {
-        Text(this.displayTitle)
-          .fontSize(FONT.bodySm)
-          .fontColor($r('app.color.text_title'))
-          .fontWeight(FontWeight.Medium)
-          .maxLines(1)
-          .textOverflow({ overflow: TextOverflow.Ellipsis })
-          .layoutWeight(1)
-        Text('×')
-          .fontSize(20)
-          .fontColor($r('app.color.text_tertiary'))
-          .padding(SPACE.xs)
-          .onClick(() => this.onClose())
-      }
-      .width('100%')
-      .alignItems(VerticalAlign.Center)
+    Row() {
+      // 左侧：标题（可截断）
+      Text(this.displayTitle)
+        .fontSize(FONT.bodySm)
+        .fontColor($r('app.color.text_title'))
+        .maxLines(1)
+        .textOverflow({ overflow: TextOverflow.Ellipsis })
+        .layoutWeight(1)
 
-      // 第二行：控制按钮组
-      Row() {
-        // 倍速
-        Column() {
-          Text(this.speedLabel)
-            .fontSize(FONT.mini)
-            .fontColor($r('app.color.brand'))
-          Text('倍速')
-            .fontSize(FONT.mini)
-            .fontColor($r('app.color.text_tertiary'))
-        }
-        .alignItems(HorizontalAlign.Center)
-        .padding({ left: SPACE.sm, right: SPACE.sm })
-        .onClick(() => this.onCycleSpeed())
-
-        Text('|').fontColor($r('app.color.divider')).margin({ left: SPACE.xs, right: SPACE.xs })
-
-        // 上一段（预留）
-        Button() {
-          Text('⏮').fontSize(18).fontColor($r('app.color.text_title'))
-        }
-        .width(40).height(40)
-        .backgroundColor($r('app.color.transparent')).borderRadius(20)
-        .opacity(0.5)
-
-        // 暂停/继续（大按钮居中）
-        Button() {
-          Text(this.paused ? '播' : '停')
-            .fontSize(24)
-            .fontColor(Color.White)
-        }
-        .width(52).height(52)
-        .backgroundColor($r('app.color.brand')).borderRadius(26)
+      // 中间：进度时间（格式 00:08/03:34）
+      Text(this.progressText)
+        .fontSize(FONT.mini)
+        .fontColor($r('app.color.text_secondary'))
         .margin({ left: SPACE.sm, right: SPACE.sm })
-        .onClick(() => this.onPauseToggle())
 
-        // 下一段（预留）
-        Button() {
-          Text('⏭').fontSize(18).fontColor($r('app.color.text_title'))
-        }
-        .width(40).height(40)
-        .backgroundColor($r('app.color.transparent')).borderRadius(20)
-        .opacity(0.5)
-
-        Text('|').fontColor($r('app.color.divider')).margin({ left: SPACE.xs, right: SPACE.xs })
-
-        // 收起
-        Column() {
-          Text('▼').fontSize(14).fontColor($r('app.color.text_secondary'))
-          Text('收起').fontSize(FONT.mini).fontColor($r('app.color.text_tertiary'))
-        }
-        .alignItems(HorizontalAlign.Center)
-        .padding({ left: SPACE.sm, right: SPACE.sm })
-        .onClick(() => { this.floatState = FloatState.Collapsed; })
+      // 暂停按钮
+      Button() {
+        Text(this.paused ? '播' : '停')
+          .fontSize(16)
+          .fontColor(Color.White)
       }
-      .width('100%').height(56)
-      .justifyContent(FlexAlign.Center)
-      .alignItems(VerticalAlign.Center)
-      .margin({ top: SPACE.xs })
+      .width(36)
+      .height(36)
+      .backgroundColor($r('app.color.brand'))
+      .borderRadius(18)
+      .onClick(() => this.onPauseToggle())
+
+      // 继续播放按钮
+      Button() {
+        Text('播')
+          .fontSize(16)
+          .fontColor($r('app.color.text_title'))
+      }
+      .width(36)
+      .height(36)
+      .backgroundColor($r('app.color.transparent'))
+      .borderRadius(18)
+      .margin({ left: SPACE.xs })
+      .onClick(() => { if (this.paused) TtsManager.resume(); })
+
+      // 关闭按钮
+      Button() {
+        Text('\u00D7')  // Unicode 乘号（×），不用 emoji
+          .fontSize(18)
+          .fontColor($r('app.color.text_tertiary'))
+      }
+      .width(32)
+      .height(32)
+      .backgroundColor($r('app.color.transparent'))
+      .borderRadius(16)
+      .onClick(() => this.onClose())
     }
     .width(this.EXPANDED_WIDTH)
-    .padding({ top: SPACE.sm, bottom: SPACE.sm, left: SPACE.md, right: SPACE.md })
+    .height(this.PANEL_HEIGHT)   // 与迷你条同高（52vp），保持紧凑
+    .padding({ left: SPACE.md, right: SPACE.sm })
     .backgroundColor($r('app.color.surface'))
     .borderRadius(RADIUS.lg)
     .shadow(this.expandedShadow)
+    .alignItems(VerticalAlign.Center)
   }
 
   // 展开面板阴影样式

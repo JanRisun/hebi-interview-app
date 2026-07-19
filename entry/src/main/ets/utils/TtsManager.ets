@@ -270,6 +270,16 @@ class _TtsEngineImpl {
     return this.rawText.length > 0;
   }
 
+  // 当前句子下标（从 0 开始），供悬浮按钮显示估算进度
+  get currentSegment(): number {
+    return this.segIndex;
+  }
+
+  // 总句数，供悬浮按钮显示估算进度
+  get totalSegments(): number {
+    return this.sentences.length;
+  }
+
   // 重播上一段（空闲态悬浮按钮点击时调用）
   async replayLast(): Promise<void> {
     if (this.rawText) {
