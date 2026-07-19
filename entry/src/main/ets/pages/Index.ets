@@ -43,7 +43,7 @@ struct Index {
 
         TabContent() {
           PracticeView()
-        }.tabBar(this.tabBarItem(2, 'sys.symbol.pencil', '真题模考'))
+        }.tabBar(this.tabBarItem(2, 'sys.symbol.checkmark_circle', '真题模考'))
 
         TabContent() {
           ProfileView()
