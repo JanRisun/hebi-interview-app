@@ -9,6 +9,9 @@
 //   - writeAudio 每次块长【仅支持 640 或 1280 字节】，否则识别率骤降甚至报错。
 //   - 单题作答约 150s > 60s 短语音上限 → createEngine 必须 recognizerMode:'long'（≤8h）。
 //   - 结果：onResult 回调中 result.result 为文字、result.isFinal=true 为最终完整结果；finish() 触发 onComplete。
+//
+// ⚠️ 输入格式要求：仅支持 WAV(PCM 16k/单声道/16bit)。当前录音用 AVRecorder(AAC/m4a)，
+//   故实际链路为「录音(m4a) → 待实现解码(PCM) → 转写」；若后续切换到 OH Audio 录 PCM 则可直接喂入。
 import { speechRecognizer } from '@kit.CoreSpeechKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { fileIo } from '@kit.CoreFileKit';
@@ -86,7 +89,8 @@ class _AsrHelperImpl {
     this.engine.setListener(listener);
   }
 
-  // 文件转写：读 WAV → 跳过 44 字节头 → 按 1280 字节块循环 writeAudio → finish → 返回文字
+  // 文件转写：打开 WAV → seek 跳过 44 字节头 → 循环 readSync 顺序读（每次自动推进 fd 位置）
+  //   → 按 1280 字节块 writeAudio → finish() → 返回文字
   async transcribeFile(wavPath: string): Promise<string> {
     await this.ensureEngine();
     if (!this.engine) return '';
@@ -119,35 +123,29 @@ class _AsrHelperImpl {
           audioInfo: audioInfo,
           extraParams: extraParam
         };
-        this.engine.startListening(startParams);
 
-        // 读 PCM 体并分块写入（带节奏，防溢出）
+        // 打开文件并跳过 WAV 44 字节头（ArkTS 用 seekSync 定位，之后 readSync 顺序读取自动推进位置）
         const file = fileIo.openSync(wavPath, fileIo.OpenMode.READ_ONLY);
+        fileIo.seekSync(file.fd, WAV_HEADER, fileIo.SeekPosition.SET_BEGIN);
+
         const buf: ArrayBuffer = new ArrayBuffer(CHUNK);
-        let offset: number = WAV_HEADER;
+        // ArkTS fileIo.readSync 返回值类型是 number（实际读到的字节数），不是对象！
+        // 参数：(fd, buffer, options?) 其中 options 只有 offset(buffer偏移) 和 length(要读的字节数)
+        let bytesRead: number = 0;
         const sleep = (ms: number): Promise<void> => new Promise<void>((r) => setTimeout(r, ms));
         (async (): Promise<void> => {
           try {
-            while (offset + CHUNK <= total) {
-              const res = fileIo.readSync(file.fd, buf, { offset: 0, length: CHUNK, position: offset });
-              if (res.bytesRead <= 0) break;
-              this.engine!.writeAudio(this.sessionId, new Uint8Array(buf.slice(0, res.bytesRead)));
-              offset += res.bytesRead;
+            // 顺序读取：每次 readSync 自动将 fd 位置向前推进，无需手动维护 offset
+            while ((bytesRead = fileIo.readSync(file.fd, buf, { offset: 0, length: CHUNK })) > 0) {
+              this.engine!.writeAudio(this.sessionId, new Uint8Array(buf.slice(0, bytesRead)));
               await sleep(WRITE_INTERVAL_MS);
-            }
-            // 末尾不足一块：补零到 CHUNK 再写（静音段，ASR 安全）
-            const remain: number = total - offset;
-            if (remain > 0) {
-              const lastBuf: ArrayBuffer = new ArrayBuffer(CHUNK);
-              fileIo.readSync(file.fd, lastBuf, { offset: 0, length: remain, position: offset });
-              this.engine!.writeAudio(this.sessionId, new Uint8Array(lastBuf));
             }
           } catch (e) {
             const err = e as BusinessError;
             hilog.error(DOMAIN, TAG, 'writeAudio loop fail: %{public}s', err.message);
           } finally {
-            try { fileIo.closeSync(file.fd); } catch (e) { /* ignore */ }
-            // 写完所有音频 → 结束识别，触发 onComplete 返回最终文字
+            try { fileIo.closeSync(file.fd); } catch (closeErr) { /* ignore */ }
+            // 写完所有音频（或读到 EOF）→ 结束识别，触发 onComplete 返回最终文字
             this.engine!.finish(this.sessionId);
           }
         })();

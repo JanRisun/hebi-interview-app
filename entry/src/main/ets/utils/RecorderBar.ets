@@ -32,10 +32,10 @@ export struct RecorderBar {
   private playFile: fileIo.File | undefined = undefined;
   private timer: number = 0;
 
-  // 录音文件路径：应用沙箱 filesDir/rec_<qid>.wav（PCM/WAV，供 ASR 文件转写直接食用）
+  // 录音文件路径：应用沙箱 filesDir/rec_<qid>.m4a（AAC 编码，AVRecorder 仅支持压缩格式）
   private filePath(): string {
     const ctx = getContext(this) as common.UIAbilityContext;
-    return ctx.filesDir + '/rec_' + this.qid + '.wav';
+    return ctx.filesDir + '/rec_' + this.qid + '.m4a';
   }
 
   // 转写文本路径：与录音同名的 .txt
@@ -73,12 +73,21 @@ export struct RecorderBar {
   }
 
   // 端侧转写：调 AsrHelper 把录音文件转成文字，存本机并展示
+  // ⚠️ 当前录音格式为 m4a(AAC)，而 speechRecognizer 仅接受 PCM/WAV 输入。
+  //   故实际转写链路需要先经 AVCodec 解码 m4a→PCM（待实现），当前会返回空字符串 + 提示用户。
   private async doTranscribe(): Promise<void> {
     if (this.transcribing) return;
     this.transcribing = true;
     try {
+      // 格式检查：当前录的是 .m4a，ASR 引擎只吃 .wav/.pcm
+      if (this.filePath().endsWith('.m4a')) {
+        this.transcriptText = '[格式不支持] 当前录音为 AAC(m4a) 格式，语音识别引擎仅支持 WAV(PCM) 格式输入。' +
+          '后续需增加音频解码步骤（m4a→PCM）后才能自动转写。';
+        this.hasTranscript = false;
+        return;
+      }
       const text: string = await AsrHelper.transcribeFile(this.filePath());
-      this.transcriptText = text;
+      this.transcriptText = text || '[未识别到文字]';
       this.hasTranscript = text.length > 0;
       if (text.length > 0) {
         try {
@@ -167,13 +176,15 @@ export struct RecorderBar {
       this.avRecorder.on('error', (err: BusinessError): void => {
         hilog.error(DOMAIN, TAG, 'rec error: %{public}s', err.message);
       });
-      // 录音格式改 PCM/WAV：ASR 文件转写要求 16k/单声道/16bit 裸 PCM（WAV 封装，去 44 字节头即可喂）
+      // 录音格式：AAC / m4a（AVRecorder 仅支持压缩编码，不支持直录 PCM/WAV）
+      // 后续若需 ASR 转写，需另加 m4a→PCM 解码步骤（AVCodec）或改用 OH Audio 录制 raw PCM
       const avProfile: media.AVRecorderProfile = {
-        audioBitrate: 256000,           // 16bit * 16000 * 1 = 256000 bps
+        audioBitrate: 128000,
         audioChannels: 1,
-        audioCodec: media.CodecMimeType.AUDIO_PCM,
-        audioSampleRate: 16000,
-        fileFormat: media.ContainerFormatType.CFT_WAV,
+        audioCodec: media.CodecMimeType.AUDIO_AAC,
+        aacProfile: media.AacProfile.AAC_LC,
+        audioSampleRate: 44100,
+        fileFormat: media.ContainerFormatType.CFT_MPEG_4A,
       };
       const file = fileIo.openSync(
         this.filePath(),
