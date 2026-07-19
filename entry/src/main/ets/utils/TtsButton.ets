@@ -47,6 +47,7 @@ export struct TtsButton {
         : $r('app.color.brand')
     )
     .borderRadius(RADIUS.pill)
+    .flexShrink(0)   // 关键：在横向 Row 父容器中不被压缩为 0 宽，否则内部 Text 会被挤没、变成空按钮
     .onClick(() => {
       // toggle 作用在全局单例引擎上：无论哪个页面的按钮点击，都会同步驱动 AppStorage 状态，
       // 因此本按钮与悬浮按钮、其他页面按钮的播放/暂停态始终一致。

@@ -176,11 +176,15 @@ struct Detail {
           .margin({ bottom: SPACE.md })
         }
         // 语音播报：整篇知识点（标题 + 各小节标题与正文）
-        TtsButton({
-          text: this.article!.title + '。' +
-            this.article!.sections.map((s: Section) => (s.heading ? s.heading + '。' : '') + s.body).join('。'),
-          label: '🔊 朗读全文'
-        })
+        // 用 Row 包裹：Column 中子项默认被拉伸成满宽，会变成左侧孤字、右侧大片空白的「空条」，
+        // 包一层 Row（默认按内容宽度自适应）即可让按钮收缩为紧凑药丸。
+        Row() {
+          TtsButton({
+            text: this.article!.title + '。' +
+              this.article!.sections.map((s: Section) => (s.heading ? s.heading + '。' : '') + s.body).join('。'),
+            label: '🔊 朗读全文'
+          })
+        }
         .margin({ bottom: SPACE.md })
         // 我的标记（用户自定义标签，持久化）
         this.userTagSection()
@@ -246,8 +250,10 @@ struct Detail {
           .margin({ bottom: SPACE.md })
         }
         // 语音播报：题目
-        TtsButton({ text: this.question!.prompt, label: '🔊 朗读题目' })
-          .margin({ bottom: SPACE.md })
+        Row() {
+          TtsButton({ text: this.question!.prompt, label: '🔊 朗读题目' })
+        }
+        .margin({ bottom: SPACE.md })
         // 我的标记（用户自定义标签，持久化）
         this.userTagSection()
         Text('【题目】')
@@ -268,8 +274,12 @@ struct Detail {
               .fontSize(FONT.body)
               .fontWeight(FontWeight.Medium)
               .fontColor($r('app.color.brand'))
+              .layoutWeight(1)   // 空间不足时标题收缩，把位置让给右侧朗读按钮
+              .maxLines(1)
+              .textOverflow({ overflow: TextOverflow.Ellipsis })
             TtsButton({ text: this.question!.answerScript, label: '🔊 朗读解析' })
               .margin({ left: SPACE.md })
+              .flexShrink(0)   // 不被压缩，保证按钮始终有完整宽度显示文字
           }
           .margin({ bottom: SPACE.xs })
           Text(this.question!.answerScript)
