@@ -34,7 +34,7 @@ struct Index {
 
   build() {
     Stack({ alignContent: Alignment.BottomStart }) {
-      // ====== 底层：Tab 页面内容 ======
+      // 底层：Tab 页面内容
       Column() {
         Tabs({ barPosition: BarPosition.End }) {
           TabContent() {
@@ -64,17 +64,10 @@ struct Index {
       .height('100%')
       .backgroundColor($r('app.color.background'))
 
-      // ====== 上层：TTS 悬浮播控按钮（全局覆盖，可拖拽）======
-      // 用全屏透明容器承载，position 只能作用于原生组件
-      Column() {
-        TtsFloatButton()
-      }
-      .width('100%')
-      .height('100%')
-      .position({ x: 0, y: 0 })
+      // 上层：TTS 悬浮播控按钮（translate 自定位，全局覆盖可拖拽）
+      TtsFloatButton()
     }
     .width('100%')
     .height('100%')
-    .clip(false) // 允许悬浮按钮溢出边界拖拽
   }
 }
