@@ -5,7 +5,7 @@ import { CategoryView } from './Category';
 import { FlashcardView } from './Flashcard';
 import { PracticeView } from './Practice';
 import { ProfileView } from './Profile';
-import { TtsFloatButton } from './utils/TtsFloatButton';
+import { TtsFloatButton } from '../utils/TtsFloatButton';
 import { FONT, SPACE } from '../utils/Theme';
 
 @Entry
@@ -65,8 +65,13 @@ struct Index {
       .backgroundColor($r('app.color.background'))
 
       // ====== 上层：TTS 悬浮播控按钮（全局覆盖，可拖拽）======
-      TtsFloatButton()
-        .position({ x: 0, y: 0 }) // 内部自行管理绝对定位
+      // 用全屏透明容器承载，position 只能作用于原生组件
+      Column() {
+        TtsFloatButton()
+      }
+      .width('100%')
+      .height('100%')
+      .position({ x: 0, y: 0 })
     }
     .width('100%')
     .height('100%')
