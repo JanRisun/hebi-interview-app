@@ -6,12 +6,6 @@ import { AppData, Article, Question } from '../model/Types';
 import { UserTagStore } from '../utils/UserTagStore';
 import { FONT, RADIUS, SPACE } from '../utils/Theme';
 
-// 筛选匹配用的最小结构（Article/Question 共有的 id+tags）
-interface Taggable {
-  id: string;
-  tags: string[];
-}
-
 @Component
 export struct CategoryView {
   @State data: AppData | null = null;
@@ -31,7 +25,8 @@ export struct CategoryView {
   }
 
   // 判断是否命中当前标签筛选（自动标签或用户标签任一命中即可）
-  private matchesFilter(item: Taggable): boolean {
+  // 注：参数不加显式类型，避免 arkts-no-structural-typing 报错（Article/Question 均含 id+tags）
+  private matchesFilter(item): boolean {
     if (this.filterTag === '') return true;
     const user: string[] = this.userTagMap[item.id] ?? [];
     return item.tags.includes(this.filterTag) || user.includes(this.filterTag);
