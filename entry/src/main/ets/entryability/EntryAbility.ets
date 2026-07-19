@@ -14,7 +14,9 @@ export default class EntryAbility extends UIAbility {
     AppStorage.setOrCreate('currentColorMode', this.context.config.colorMode);
     // 语音播报全局态（多个朗读按钮共享同一 TTS 引擎）
     AppStorage.setOrCreate('ttsPlaying', false);
+    AppStorage.setOrCreate('ttsPaused', false);
     AppStorage.setOrCreate('ttsText', '');
+    AppStorage.setOrCreate('ttsSpeed', 1.0);
     hilog.info(DOMAIN, TAG, '%{public}s', 'Ability onCreate');
     // 预加载数据、收藏存储与用户标签存储
     DataStore.load(this.context)
