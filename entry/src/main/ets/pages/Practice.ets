@@ -24,6 +24,7 @@ export struct PracticeView {
   @State elapsed: number = 0;                 // 整卷总用时（秒，正计时，含超时）
   @State stage: 'think' | 'speak' = 'think'; // 当前分段：思考中 / 作答中
   @State remain: number = 30;                 // 当前分段剩余秒数（作答超时后变负，用于显示「超时 Xs」）
+  @State timerStarted: boolean = false;       // 用户是否点击了「开始答题」（false=待机态，不倒计时）
   @State notes: Record<string, string> = {};   // 用户作答要点（按题目 id）
   @State ratings: Record<string, string> = {}; // 自评：掌握/模糊/不会（按题目 id）
   @State kw: string = '';                      // 顶部搜索框
@@ -46,13 +47,15 @@ export struct PracticeView {
   // 当前题思考时长（秒）：套题有则用之，无则默认 30（考情基线：思考约30秒）
   get thinkSec(): number {
     const s: MockSet | null = this.curSet;
-    return s && s.totalThink > 0 ? s.totalThink : 30;
+    const v: number = (s && s.totalThink > 0) ? s.totalThink : 30;
+    return Number.isFinite(v) && v > 0 ? v : 30;   // 防御：NaN/负数/Infinity 全部兜底
   }
 
   // 当前题作答时长（秒）：套题有则用之，无则默认 150（2分30秒，考情基线）
   get speakSec(): number {
     const s: MockSet | null = this.curSet;
-    return s && s.totalSpeak > 0 ? s.totalSpeak : 150;
+    const v: number = (s && s.totalSpeak > 0) ? s.totalSpeak : 150;
+    return Number.isFinite(v) && v > 0 ? v : 150; // 防御：NaN/负数/Infinity 全部兜底
   }
 
   // 统计各评级数量（供报告页 builder 引用，避免在 builder 内写 const）
@@ -122,8 +125,9 @@ export struct PracticeView {
   // 分段计时主循环：思考(thinkSec)倒计时 → 作答(speakSec)倒计时 → 超时继续计（提示音）
   startTimer(): void {
     this.clearTimer();
+    this.timerStarted = true;          // 标记：用户已开始答题，UI 从待机态切到倒计
     this.stage = 'think';
-    this.remain = this.thinkSec;
+    this.remain = this.thinkSec;       // 取防御后的值（保证非 NaN）
     this.timer = setInterval((): void => {
       this.elapsed++;          // 整卷总用时累加（含超时）
       this.remain--;          // 当前分段倒计时
@@ -141,10 +145,10 @@ export struct PracticeView {
     }, 1000);
   }
 
-  // 切到下一题时重置分段计时（整卷 elapsed 不清零）
+  // 切到下一题时重置分段计时（整卷 elapsed 不清零，timerStarted 保持）
   private resetStage(): void {
     this.stage = 'think';
-    this.remain = this.thinkSec;
+    this.remain = this.thinkSec;       // 取防御后的值
   }
 
   // 提示音：用振动反馈（无需音频资源，跨版本稳定）。start=短振(开始作答)，timeout=长振(时间到)
@@ -163,8 +167,10 @@ export struct PracticeView {
     this.qList = qs;
     this.idx = 0;
     this.elapsed = 0;
+    this.timerStarted = false;          // 待机态：用户需手动点「开始答题」才启动倒计
+    this.remain = this.thinkSec;       // 预填（UI 显示用，防御 NaN）
     this.phase = 'exam';
-    this.startTimer();
+    // 不再自动 startTimer()——等用户点「开始答题」按钮
   }
 
   // 随机单题自测（保留 Tier A 能力）：合成一个虚拟套题
@@ -184,8 +190,10 @@ export struct PracticeView {
     this.qList = [q];
     this.idx = 0;
     this.elapsed = 0;
+    this.timerStarted = false;          // 待机态
+    this.remain = this.thinkSec;       // 预填（UI 显示用，防御 NaN）
     this.phase = 'exam';
-    this.startTimer();
+    // 不再自动 startTimer()——等用户点「开始答题」按钮
   }
 
   next(): void {
@@ -199,11 +207,13 @@ export struct PracticeView {
 
   submit(): void {
     this.clearTimer();
+    this.timerStarted = false;
     this.phase = 'review';
   }
 
   backToSelect(): void {
     this.clearTimer();
+    this.timerStarted = false;
     this.phase = 'select';
     this.curSet = null;
     this.qList = [];
@@ -268,8 +278,10 @@ export struct PracticeView {
   }
 
   fmt(sec: number): string {
-    const m: number = Math.floor(sec / 60);
-    const s: number = sec % 60;
+    if (!Number.isFinite(sec)) return '--:--';   // NaN / Infinity / undefined 全部显示为占位符
+    const s_num: number = Math.floor(sec);
+    const m: number = Math.floor(s_num / 60);
+    const s: number = s_num % 60;
     return `${m}:${s < 10 ? '0' + s : '' + s}`;
   }
 
@@ -440,43 +452,60 @@ export struct PracticeView {
             }
             .layoutWeight(1)
             .alignItems(HorizontalAlign.Center)
-            // 分段计时显示：思考/作答阶段 + 剩余秒（超时显示「已超时 Xs」）
-            Column() {
-              Text(this.stage === 'think' ? '思考中' : '作答中')
-                .fontSize(11)
-                .fontColor(this.stage === 'think' ? $r('app.color.brand') : $r('app.color.warning'))
-                .margin({ bottom: 1 })
-              if (this.remain >= 0) {
-                Text(this.fmt(this.remain))
-                  .fontSize(18)
-                  .fontWeight(FontWeight.Bold)
-                  .fontColor($r('app.color.text_title'))
-              } else {
-                Text(`超时 ${-this.remain}s`)
-                  .fontSize(14)
-                  .fontWeight(FontWeight.Bold)
-                  .fontColor($r('app.color.danger'))
+            // 分段计时：待机态→显示「开始答题」按钮；运行态→显示倒计时
+            if (!this.timerStarted) {
+              Button('开始答题')
+                .fontSize(14)
+                .fontWeight(FontWeight.Medium)
+                .height(36)
+                .backgroundColor($r('app.color.brand'))
+                .fontColor($r('app.color.on_primary'))
+                .borderRadius(RADIUS.pill)
+                .onClick(() => this.startTimer())
+            } else {
+              Column() {
+                Text(this.stage === 'think' ? '思考中' : '作答中')
+                  .fontSize(11)
+                  .fontColor(this.stage === 'think' ? $r('app.color.brand') : $r('app.color.warning'))
+                  .margin({ bottom: 1 })
+                if (this.remain >= 0) {
+                  Text(this.fmt(this.remain))
+                    .fontSize(18)
+                    .fontWeight(FontWeight.Bold)
+                    .fontColor($r('app.color.text_title'))
+                } else {
+                  Text(`超时 ${-this.remain}s`)
+                    .fontSize(14)
+                    .fontWeight(FontWeight.Bold)
+                    .fontColor($r('app.color.danger'))
+                }
               }
+              .alignItems(HorizontalAlign.Center)
             }
-            .alignItems(HorizontalAlign.Center)
           }
           .width('92%')
           .margin({ top: 14, bottom: 10 })
 
           // 分段计时说明：本题思考→作答节奏提示
           Row({ space: 8 }) {
-            Text(`本题：思考 ${this.fmt(this.thinkSec)}`)
+            Text(`本题：思考 ${this.fmt(this.thinkSec || 0)}`)
               .fontSize(12)
               .fontColor($r('app.color.brand'))
             Text('→')
               .fontSize(12)
               .fontColor($r('app.color.text_tertiary'))
-            Text(`作答 ${this.fmt(this.speakSec)}`)
+            Text(`作答 ${this.fmt(this.speakSec || 0)}`)
               .fontSize(12)
               .fontColor($r('app.color.warning'))
-            Text('（时间到会振动提示）')
-              .fontSize(11)
-              .fontColor($r('app.color.text_tertiary'))
+            if (!this.timerStarted) {
+              Text('（点击上方「开始答题」启动倒计时）')
+                .fontSize(11)
+                .fontColor($r('app.color.brand'))
+            } else {
+              Text('（时间到会振动提示）')
+                .fontSize(11)
+                .fontColor($r('app.color.text_tertiary'))
+            }
           }
           .width('92%')
           .margin({ bottom: 8 })
