@@ -48,14 +48,14 @@ export struct PracticeView {
   // 当前题思考时长（秒）：套题有则用之，无则默认 30
   get thinkSec(): number {
     const s: MockSet | null = this.curSet;
-    const v = (s && typeof s.totalThink === 'number' && s.totalThink > 0) ? s.totalThink : 30;
+    const v: number = (s && typeof s.totalThink === 'number' && s.totalThink > 0) ? s.totalThink : 30;
     return Number.isFinite(v) ? v : 30;
   }
 
   // 当前题作答时长（秒）：套题有则用之，无则默认 150（2分30秒）
   get speakSec(): number {
     const s: MockSet | null = this.curSet;
-    const v = (s && typeof s.totalSpeak === 'number' && s.totalSpeak > 0) ? s.totalSpeak : 150;
+    const v: number = (s && typeof s.totalSpeak === 'number' && s.totalSpeak > 0) ? s.totalSpeak : 150;
     return Number.isFinite(v) ? v : 150;
   }
 
@@ -74,7 +74,7 @@ export struct PracticeView {
   }
 
   aboutToAppear(): void {
-    const ctx = getContext(this) as common.UIAbilityContext;
+    const ctx: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
     DataStore.load(ctx).then((d: AppData) => {
       this.data = d;
       this.sets = DataStore.sets();
@@ -116,7 +116,7 @@ export struct PracticeView {
   // 读该题的本地语音识别转写（RecorderBar 存的 rec_<id>.txt）
   private asrOf(id: string): string {
     try {
-      const ctx = getContext(this) as common.UIAbilityContext;
+      const ctx: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
       return fileIo.readTextSync(ctx.filesDir + '/rec_' + id + '.txt');
     } catch (e) {
       return '';
@@ -248,7 +248,7 @@ export struct PracticeView {
   private updateRatings(id: string, r: string): void {
     const nextR: Record<string, string> = {};
     const keys: string[] = Object.keys(this.ratings);
-    for (let k = 0; k < keys.length; k++) {
+    for (let k: number = 0; k < keys.length; k++) {
       nextR[keys[k]] = this.ratings[keys[k]];
     }
     nextR[id] = r;
@@ -292,7 +292,7 @@ export struct PracticeView {
   private updateNotes(id: string, v: string): void {
     const nextN: Record<string, string> = {};
     const keys: string[] = Object.keys(this.notes);
-    for (let k = 0; k < keys.length; k++) {
+    for (let k: number = 0; k < keys.length; k++) {
       nextN[keys[k]] = this.notes[keys[k]];
     }
     nextN[id] = v;
@@ -310,7 +310,7 @@ export struct PracticeView {
 
   private fmtDate(): string {
     const d: Date = new Date();
-    const p2 = (n: number): string => (n < 10 ? '0' + n : '' + n);
+    const p2: (n: number) => string = (n: number): string => (n < 10 ? '0' + n : '' + n);
     return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}:${p2(d.getMinutes())}`;
   }
 
@@ -771,7 +771,7 @@ export struct PracticeView {
   // 辅助：统计某评级数量
   private countRating(label: string): number {
     let c: number = 0;
-    for (let i = 0; i < this.qList.length; i++) {
+    for (let i: number = 0; i < this.qList.length; i++) {
       if (this.ratings[this.qList[i].id] === label) c++;
     }
     return c;
