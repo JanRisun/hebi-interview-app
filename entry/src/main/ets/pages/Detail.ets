@@ -5,6 +5,7 @@ import { Article, Question, Section } from '../model/Types';
 import { FavStore } from '../utils/FavStore';
 import { UserTagStore } from '../utils/UserTagStore';
 import { RecorderBar } from '../utils/RecorderBar';
+import { TtsButton } from '../utils/TtsButton';
 import { FONT, RADIUS, SPACE } from '../utils/Theme';
 
 // 预设快捷标记（点击切换：未加→添加，已加→移除）
@@ -173,6 +174,13 @@ struct Detail {
           .width('100%')
           .margin({ bottom: SPACE.md })
         }
+        // 语音播报：整篇知识点（标题 + 各小节标题与正文）
+        TtsButton({
+          text: this.article!.title + '。' +
+            this.article!.sections.map((s: Section) => (s.heading ? s.heading + '。' : '') + s.body).join('。'),
+          label: '🔊 朗读全文'
+        })
+        .margin({ bottom: SPACE.md })
         // 我的标记（用户自定义标签，持久化）
         this.userTagSection()
         ForEach(this.article!.sections, (s: Section) => {
@@ -236,6 +244,9 @@ struct Detail {
           .width('100%')
           .margin({ bottom: SPACE.md })
         }
+        // 语音播报：题目
+        TtsButton({ text: this.question!.prompt, label: '🔊 朗读题目' })
+          .margin({ bottom: SPACE.md })
         // 我的标记（用户自定义标签，持久化）
         this.userTagSection()
         Text('【题目】')
@@ -251,11 +262,15 @@ struct Detail {
         // 开口自测：录音 + 回放 + 计时（按当前题 id 存本机）
         RecorderBar({ qid: this.itemId })
         if (this.showAnswer) {
-          Text('【参考答案 · 逐字稿】')
-            .fontSize(FONT.body)
-            .fontWeight(FontWeight.Medium)
-            .fontColor($r('app.color.brand'))
-            .margin({ bottom: SPACE.xs })
+          Row() {
+            Text('【参考答案 · 逐字稿】')
+              .fontSize(FONT.body)
+              .fontWeight(FontWeight.Medium)
+              .fontColor($r('app.color.brand'))
+            TtsButton({ text: this.question!.answerScript, label: '🔊 朗读解析' })
+              .margin({ left: SPACE.md })
+          }
+          .margin({ bottom: SPACE.xs })
           Text(this.question!.answerScript)
             .fontSize(FONT.bodySm)
             .fontColor($r('app.color.text_body'))

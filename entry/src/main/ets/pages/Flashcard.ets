@@ -4,6 +4,7 @@ import { common } from '@kit.AbilityKit';
 import { DataStore } from '../model/DataStore';
 import { Section } from '../model/Types';
 import { FONT, RADIUS, SPACE } from '../utils/Theme';
+import { TtsButton } from '../utils/TtsButton';
 
 interface Card {
   title: string;
@@ -172,6 +173,16 @@ export struct FlashcardView {
         }
         .width('88%')
         .margin({ top: 20 })
+
+        // 语音播报：朗读当前可见面（正面要点 / 背面详解）
+        Row({ space: 12 }) {
+          TtsButton({
+            text: this.flipped ? this.cards[this.idx].body : this.cards[this.idx].title,
+            label: '🔊 朗读当前面'
+          })
+        }
+        .width('88%')
+        .margin({ top: 12 })
 
         Text('提示：像百词斩一样先凭记忆回想，再翻转核对；左滑下一张，右滑进收藏')
           .fontSize(FONT.caption)
