@@ -3,6 +3,7 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import { window } from '@kit.ArkUI';
 import { DataStore } from '../model/DataStore';
 import { FavStore } from '../utils/FavStore';
+import { UserTagStore } from '../utils/UserTagStore';
 
 const DOMAIN: number = 0x0000;
 const TAG: string = 'InterviewPrep';
@@ -12,9 +13,10 @@ export default class EntryAbility extends UIAbility {
     // 记录系统深浅色模式到 AppStorage，供页面在 Token 自动切换之外参考
     AppStorage.setOrCreate('currentColorMode', this.context.config.colorMode);
     hilog.info(DOMAIN, TAG, '%{public}s', 'Ability onCreate');
-    // 预加载数据与收藏存储
+    // 预加载数据、收藏存储与用户标签存储
     DataStore.load(this.context)
       .then(() => FavStore.init(this.context))
+      .then(() => UserTagStore.init(this.context))
       .catch((e: Error) => hilog.error(DOMAIN, TAG, 'init failed: %{public}s', JSON.stringify(e)));
   }
 

@@ -3,7 +3,11 @@ import { common } from '@kit.AbilityKit';
 import { DataStore } from '../model/DataStore';
 import { Article, Question, Section } from '../model/Types';
 import { FavStore } from '../utils/FavStore';
+import { UserTagStore } from '../utils/UserTagStore';
 import { FONT, RADIUS, SPACE } from '../utils/Theme';
+
+// 预设快捷标记（点击切换：未加→添加，已加→移除）
+const PRESET_TAGS: string[] = ['已背', '易错', '重点', '常考', '待复习', '难点'];
 
 @Entry
 @Component
@@ -14,6 +18,8 @@ struct Detail {
   @State question: Question | null = null;
   @State showAnswer: boolean = false;   // 真题详情：参考答案默认隐藏，手动展开
   @State fav: boolean = false;
+  @State userTags: string[] = [];       // 当前内容的用户自定义标签
+  @State customInput: string = '';       // 自定义标签输入框
 
   aboutToAppear(): void {
     const p = router.getParams() as Record<string, Object>;
@@ -28,11 +34,113 @@ struct Detail {
         this.showAnswer = false;
       }
       this.fav = await FavStore.has(this.itemId);
+      this.userTags = await UserTagStore.getUserTags(this.itemId);
     });
   }
 
   private async toggleFav(): Promise<void> {
     this.fav = await FavStore.toggle(this.itemId);
+  }
+
+  // 切换预设标记（已加则移除，未加则添加）
+  private async togglePreset(p: string): Promise<void> {
+    if (this.userTags.includes(p)) {
+      this.userTags = await UserTagStore.removeTag(this.itemId, p);
+    } else {
+      this.userTags = await UserTagStore.addTag(this.itemId, p);
+    }
+  }
+
+  // 移除一个用户标签（点击当前标签）
+  private async removeUserTag(t: string): Promise<void> {
+    this.userTags = await UserTagStore.removeTag(this.itemId, t);
+  }
+
+  // 添加自定义标签
+  private async addCustomTag(): Promise<void> {
+    const t: string = this.customInput.trim();
+    if (!t) return;
+    this.userTags = await UserTagStore.addTag(this.itemId, t);
+    this.customInput = '';
+  }
+
+  // 我的标记管理区：当前标签(点按移除) + 预设快捷 + 自定义输入
+  @Builder userTagSection() {
+    Column() {
+      Text('我的标记')
+        .fontSize(FONT.body)
+        .fontWeight(FontWeight.Bold)
+        .fontColor($r('app.color.text_title'))
+        .alignSelf(HorizontalAlign.Start)
+        .margin({ bottom: SPACE.xs })
+
+      // 已添加的标签：点击移除
+      if (this.userTags.length > 0) {
+        Flex({ wrap: FlexWrap.Wrap }) {
+          ForEach(this.userTags, (t: string) => {
+            Row() {
+              Text(t)
+                .fontSize(FONT.caption)
+              Text('✕')
+                .fontSize(FONT.caption)
+                .margin({ left: 4 })
+            }
+            .padding({ left: SPACE.sm, right: SPACE.sm, top: SPACE.xs, bottom: SPACE.xs })
+            .backgroundColor($r('app.color.brand'))
+            .fontColor($r('app.color.on_primary'))
+            .borderRadius(RADIUS.sm)
+            .margin({ top: SPACE.xs, right: SPACE.xs })
+            .onClick(() => this.removeUserTag(t))
+          }, (t: string) => t)
+        }
+        .width('100%')
+        .margin({ bottom: SPACE.xs })
+      } else {
+        Text('尚未标记，点击下方快速添加')
+          .fontSize(FONT.caption)
+          .fontColor($r('app.color.text_tertiary'))
+          .alignSelf(HorizontalAlign.Start)
+          .margin({ bottom: SPACE.xs })
+      }
+
+      // 预设快捷标签：点击切换
+      Flex({ wrap: FlexWrap.Wrap }) {
+        ForEach(PRESET_TAGS, (p: string) => {
+          Text(p)
+            .fontSize(FONT.caption)
+            .fontColor(this.userTags.includes(p) ? $r('app.color.on_primary') : $r('app.color.brand'))
+            .backgroundColor(this.userTags.includes(p) ? $r('app.color.brand') : $r('app.color.tag_bg'))
+            .borderRadius(RADIUS.sm)
+            .padding({ left: SPACE.sm, right: SPACE.sm, top: SPACE.xs, bottom: SPACE.xs })
+            .margin({ top: SPACE.xs, right: SPACE.xs })
+            .onClick(() => this.togglePreset(p))
+        }, (p: string) => p)
+      }
+      .width('100%')
+      .margin({ bottom: SPACE.sm })
+
+      // 自定义标签输入
+      Row() {
+        TextInput({ placeholder: '自定义标签，如：必考', text: this.customInput })
+          .layoutWeight(1)
+          .height(36)
+          .backgroundColor($r('app.color.surface'))
+          .borderRadius(RADIUS.pill)
+          .padding({ left: SPACE.md })
+          .onChange((v: string) => { this.customInput = v; })
+        Button('添加')
+          .height(36)
+          .margin({ left: SPACE.sm })
+          .backgroundColor($r('app.color.brand'))
+          .fontColor($r('app.color.on_primary'))
+          .borderRadius(RADIUS.pill)
+          .onClick(() => this.addCustomTag())
+      }
+      .width('100%')
+      .margin({ bottom: SPACE.md })
+    }
+    .width('100%')
+    .alignItems(HorizontalAlign.Start)
   }
 
   @Builder articleView() {
@@ -63,6 +171,8 @@ struct Detail {
           .width('100%')
           .margin({ bottom: SPACE.md })
         }
+        // 我的标记（用户自定义标签，持久化）
+        this.userTagSection()
         ForEach(this.article!.sections, (s: Section) => {
           Column() {
             if (s.heading) {
@@ -124,6 +234,8 @@ struct Detail {
           .width('100%')
           .margin({ bottom: SPACE.md })
         }
+        // 我的标记（用户自定义标签，持久化）
+        this.userTagSection()
         Text('【题目】')
           .fontSize(FONT.body)
           .fontWeight(FontWeight.Medium)
