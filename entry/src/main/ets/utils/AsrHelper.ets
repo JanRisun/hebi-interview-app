@@ -124,9 +124,11 @@ class _AsrHelperImpl {
           extraParams: extraParam
         };
 
-        // 打开文件并跳过 WAV 44 字节头（ArkTS 用 seekSync 定位，之后 readSync 顺序读取自动推进位置）
+        // 打开文件并跳过 WAV 44 字节头
+        // 注意：seekSync 是 File 对象的实例方法（不是 fileIo 命名空间的静态方法）
         const file = fileIo.openSync(wavPath, fileIo.OpenMode.READ_ONLY);
-        fileIo.seekSync(file.fd, WAV_HEADER, fileIo.SeekPosition.SET_BEGIN);
+        // 0 = 从文件开头算起（SeekPosition.SET_BEGIN 的等效数值，避免枚举路径问题）
+        file.seekSync(WAV_HEADER, 0);
 
         const buf: ArrayBuffer = new ArrayBuffer(CHUNK);
         // ArkTS fileIo.readSync 返回值类型是 number（实际读到的字节数），不是对象！
@@ -144,7 +146,7 @@ class _AsrHelperImpl {
             const err = e as BusinessError;
             hilog.error(DOMAIN, TAG, 'writeAudio loop fail: %{public}s', err.message);
           } finally {
-            try { fileIo.closeSync(file.fd); } catch (closeErr) { /* ignore */ }
+            try { file.closeSync(); } catch (closeErr) { /* ignore */ }
             // 写完所有音频（或读到 EOF）→ 结束识别，触发 onComplete 返回最终文字
             this.engine!.finish(this.sessionId);
           }
