@@ -514,7 +514,7 @@ struct StudyPlan {
             .borderRadius(RADIUS.pill)
             .margin({ top: SPACE.sm })
             .onClick(() => {
-              router.pushUrl({ url: 'pages/Practice', params: { setId: this.today.set?.id ?? 0 } });
+              router.pushUrl({ url: 'pages/Practice', params: { setId: this.today?.set?.id ?? 0 } });
             })
         }
         .width('100%')
