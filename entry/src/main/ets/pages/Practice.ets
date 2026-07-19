@@ -11,6 +11,7 @@ import { RecorderBar } from '../utils/RecorderBar';
 import { fileIo } from '@kit.CoreFileKit';
 import { vibrator } from '@kit.SensorServiceKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
+import { BusinessError } from '@kit.BasicServicesKit';
 
 const PREF_NAME: string = 'practice';
 
@@ -172,12 +173,14 @@ export struct PracticeView {
         { type: 'time', duration: dur },
         { id: 1, usage: 'alarm' }
       )
-        .then(() => {
-          hilog.info(0x1000, 'Practice', '计时振动成功 kind=%{public}s', kind);
-        })
-        .catch((err: unknown) => {
-          hilog.error(0x1000, 'Practice', '计时振动失败 kind=%{public}s err=%{public}s', kind, JSON.stringify(err));
-        });
+        .then(
+          (): void => {
+            hilog.info(0x1000, 'Practice', '计时振动成功 kind=%{public}s', kind);
+          },
+          (err: BusinessError): void => {
+            hilog.error(0x1000, 'Practice', '计时振动失败 kind=%{public}s err=%{public}s', kind, JSON.stringify(err));
+          }
+        );
     } catch (e) {
       hilog.error(0x1000, 'Practice', '计时振动异常 %{public}s', JSON.stringify(e));
     }
