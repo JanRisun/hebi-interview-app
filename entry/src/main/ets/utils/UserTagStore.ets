@@ -38,7 +38,7 @@ export class UserTagStore {
     if (!UserTagStore.store) return;
     const m = await UserTagStore.map();
     if (tags.length === 0) {
-      delete m[id];
+      m[id] = [];   // ArkTS 禁 delete 操作符，赋空数组等效（getUserTags 对缺失/空均返回 []）
     } else {
       m[id] = tags;
     }

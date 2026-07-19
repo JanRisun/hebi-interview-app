@@ -71,7 +71,7 @@ struct Detail {
         .fontSize(FONT.body)
         .fontWeight(FontWeight.Bold)
         .fontColor($r('app.color.text_title'))
-        .alignSelf(HorizontalAlign.Start)
+        .alignSelf(ItemAlign.Start)
         .margin({ bottom: SPACE.xs })
 
       // 已添加的标签：点击移除
@@ -81,13 +81,14 @@ struct Detail {
             Row() {
               Text(t)
                 .fontSize(FONT.caption)
+                .fontColor($r('app.color.on_primary'))
               Text('✕')
                 .fontSize(FONT.caption)
+                .fontColor($r('app.color.on_primary'))
                 .margin({ left: 4 })
             }
             .padding({ left: SPACE.sm, right: SPACE.sm, top: SPACE.xs, bottom: SPACE.xs })
             .backgroundColor($r('app.color.brand'))
-            .fontColor($r('app.color.on_primary'))
             .borderRadius(RADIUS.sm)
             .margin({ top: SPACE.xs, right: SPACE.xs })
             .onClick(() => this.removeUserTag(t))
@@ -96,10 +97,10 @@ struct Detail {
         .width('100%')
         .margin({ bottom: SPACE.xs })
       } else {
-        Text('尚未标记，点击下方快速添加')
+          Text('尚未标记，点击下方快速添加')
           .fontSize(FONT.caption)
           .fontColor($r('app.color.text_tertiary'))
-          .alignSelf(HorizontalAlign.Start)
+          .alignSelf(ItemAlign.Start)
           .margin({ bottom: SPACE.xs })
       }
 
