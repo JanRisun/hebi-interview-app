@@ -14,14 +14,38 @@ export struct CategoryView {
   @State filterTag: string = '';                       // 当前选中的用户标签筛选（''=不过滤）
   @State userTagPool: string[] = [];                   // 全部用户标签（用于筛选条）
   @State userTagMap: Record<string, string[]> = {};    // 内容id→用户标签（用于命中判断）
+  // 预缓存：数据加载/标签切换时算一次，build 内不再实时 filter（避免每次重渲全量重算）
+  @State grouped: { cat: string, items: Article[] }[] = [];   // 按分类分组（未筛选态用）
+  @State filteredArticles: Article[] = [];                       // 当前标签命中的文章（筛选态用）
+  @State filteredQuestions: Question[] = [];                     // 当前标签命中的题目
 
   aboutToAppear(): void {
     const ctx = getContext(this) as common.UIAbilityContext;
     DataStore.load(ctx).then((d) => {
       this.data = d;
+      this.recompute();   // 数据就绪后预计算分组与筛选结果
     });
     UserTagStore.allTags().then((t) => { this.userTagPool = t; });
     UserTagStore.allMap().then((m) => { this.userTagMap = m; });
+  }
+
+  // 预计算：按分类分组 + 当前标签筛选命中。仅在数据加载/标签切换时调用一次，build 直接读缓存。
+  private recompute(): void {
+    const d: AppData | null = this.data;
+    if (!d) return;
+    const g: { cat: string, items: Article[] }[] = [];
+    for (let i: number = 0; i < d.tags.categories.length; i++) {
+      const cat: string = d.tags.categories[i];
+      g.push({ cat: cat, items: d.articles.filter((a: Article): boolean => a.category === cat) });
+    }
+    this.grouped = g;
+    if (this.filterTag === '') {
+      this.filteredArticles = d.articles;
+      this.filteredQuestions = d.questions;
+    } else {
+      this.filteredArticles = d.articles.filter((a: Article): boolean => this.matchesFilter(a.id, a.tags));
+      this.filteredQuestions = d.questions.filter((q: Question): boolean => this.matchesFilter(q.id, q.tags));
+    }
   }
 
   // 判断是否命中当前标签筛选（自动标签或用户标签任一命中即可）
@@ -100,20 +124,20 @@ export struct CategoryView {
   @Builder articleList() {
     List() {
       if (this.filterTag === '') {
-        // 未筛选：按分类分组
-        ForEach(this.data!.tags.categories, (cat: string) => {
-          ListItemGroup({ header: this.groupHeader(cat) }) {
-            ForEach(this.data!.articles.filter((a) => a.category === cat), (a: Article) => {
+        // 未筛选：按分类分组（读预缓存 grouped）
+        ForEach(this.grouped, (g: { cat: string, items: Article[] }) => {
+          ListItemGroup({ header: this.groupHeader(g.cat) }) {
+            ForEach(g.items, (a: Article) => {
               ListItem() {
                 this.rowItem(a.title, '知识点', a.tags)
               }
               .onClick(() => router.pushUrl({ url: 'pages/Detail', params: { id: a.id, kind: 'article' } }))
             }, (a: Article) => a.id)
           }
-        }, (cat: string) => cat)
+        }, (g: { cat: string, items: Article[] }) => g.cat)
       } else {
-        // 筛选态：平铺命中项，副标题显示所属分类
-        ForEach(this.data!.articles.filter((a) => this.matchesFilter(a.id, a.tags)), (a: Article) => {
+        // 筛选态：平铺命中项（读预缓存 filteredArticles）
+        ForEach(this.filteredArticles, (a: Article) => {
           ListItem() {
             this.rowItem(a.title, a.category, a.tags)
           }
@@ -127,7 +151,8 @@ export struct CategoryView {
 
   @Builder questionList() {
     List() {
-      ForEach(this.data!.questions.filter((q) => this.matchesFilter(q.id, q.tags)), (q: Question) => {
+      // 读预缓存 filteredQuestions（'' 时=全部）
+      ForEach(this.filteredQuestions, (q: Question) => {
         ListItem() {
           this.rowItem(q.title, q.source, q.tags)
         }
@@ -149,7 +174,7 @@ export struct CategoryView {
           .borderRadius(RADIUS.pill)
           .padding({ left: SPACE.md, right: SPACE.md, top: SPACE.xs, bottom: SPACE.xs })
           .margin({ right: SPACE.xs })
-          .onClick(() => { this.filterTag = ''; })
+          .onClick(() => { this.filterTag = ''; this.recompute(); })
         ForEach(this.userTagPool, (t: string) => {
           Text(t)
             .fontSize(FONT.caption)
@@ -158,7 +183,7 @@ export struct CategoryView {
             .borderRadius(RADIUS.pill)
             .padding({ left: SPACE.md, right: SPACE.md, top: SPACE.xs, bottom: SPACE.xs })
             .margin({ right: SPACE.xs })
-            .onClick(() => { this.filterTag = t; })
+            .onClick(() => { this.filterTag = t; this.recompute(); })
         }, (t: string) => t)
       }
       .padding({ left: SPACE.lg, right: SPACE.lg })
