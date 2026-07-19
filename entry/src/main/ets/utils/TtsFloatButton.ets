@@ -119,19 +119,6 @@ export struct TtsFloatButton {
     return this.BTN_SIZE;
   }
 
-  // ====== 构建 PanGesture（拖拽手势，复用）======
-  @Builder
-  DragGesture() {
-    PanGesture()
-      .onActionUpdate((event: GestureEvent) => {
-        this.dragX = event.offsetX;
-        this.dragY = event.offsetY;
-      })
-      .onActionEnd(() => {
-        this.clampPosition();
-      })
-  }
-
   build() {
     // 统一单根结构：Column 容器 + translate 定位
     Column() {
@@ -152,7 +139,16 @@ export struct TtsFloatButton {
     .width(this.getPanelWidth())
     .height(this.PANEL_HEIGHT)
     .translate({ x: this.totalX, y: this.totalY })
-    .gesture(this.DragGesture())
+    .gesture(
+      PanGesture()
+        .onActionUpdate((event: GestureEvent) => {
+          this.dragX = event.offsetX;
+          this.dragY = event.offsetY;
+        })
+        .onActionEnd(() => {
+          this.clampPosition();
+        })
+    )
   }
 
   // ====== 收起态小圆按钮 ======
