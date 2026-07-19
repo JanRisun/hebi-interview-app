@@ -124,11 +124,11 @@ class _AsrHelperImpl {
           extraParams: extraParam
         };
 
-        // 打开文件并跳过 WAV 44 字节头
-        // ArkTS fileIo 所有操作都是静态方法（传 fd），File 对象只是持有 .fd 的句柄，无实例方法
+        // 打开 WAV 文件
+        // ArkTS fileIo 没有 seekSync 方法；跳过 44 字节头的做法：先 readSync 吞掉头（读到临时 buffer 丢弃）
         const file = fileIo.openSync(wavPath, fileIo.OpenMode.READ_ONLY);
-        // seekSync(fd, offset) 第三参数 whence 默认 0=SEEK_SET（从文件头算起）
-        fileIo.seekSync(file.fd, WAV_HEADER);
+        const headerBuf: ArrayBuffer = new ArrayBuffer(WAV_HEADER);
+        fileIo.readSync(file.fd, headerBuf, { offset: 0, length: WAV_HEADER }); // 吞掉 WAV 头，不使用
 
         const buf: ArrayBuffer = new ArrayBuffer(CHUNK);
         // fileIo.readSync 返回 number（实际读到的字节数），参数：(fd, buffer, {offset, length})
@@ -136,7 +136,7 @@ class _AsrHelperImpl {
         const sleep = (ms: number): Promise<void> => new Promise<void>((r) => setTimeout(r, ms));
         (async (): Promise<void> => {
           try {
-            // readSync 每次自动推进 fd 位置，顺序读到 EOF 为止
+            // 已跳过 44 字节头，从此处开始顺序读 PCM 数据，直到 EOF
             while ((bytesRead = fileIo.readSync(file.fd, buf, { offset: 0, length: CHUNK })) > 0) {
               this.engine!.writeAudio(this.sessionId, new Uint8Array(buf.slice(0, bytesRead)));
               await sleep(WRITE_INTERVAL_MS);
