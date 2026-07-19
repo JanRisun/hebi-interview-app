@@ -25,11 +25,11 @@ export struct CategoryView {
   }
 
   // 判断是否命中当前标签筛选（自动标签或用户标签任一命中即可）
-  // 注：参数不加显式类型，避免 arkts-no-structural-typing 报错（Article/Question 均含 id+tags）
-  private matchesFilter(item): boolean {
+  // 拆成 id/tags 两个基本参数，避免结构化类型 / any/unknown 的 strict 冲突
+  private matchesFilter(id: string, tags: string[]): boolean {
     if (this.filterTag === '') return true;
-    const user: string[] = this.userTagMap[item.id] ?? [];
-    return item.tags.includes(this.filterTag) || user.includes(this.filterTag);
+    const user: string[] = this.userTagMap[id] ?? [];
+    return tags.includes(this.filterTag) || user.includes(this.filterTag);
   }
 
   // 顶部搜索 → 全文检索页
@@ -113,7 +113,7 @@ export struct CategoryView {
         }, (cat: string) => cat)
       } else {
         // 筛选态：平铺命中项，副标题显示所属分类
-        ForEach(this.data!.articles.filter((a) => this.matchesFilter(a)), (a: Article) => {
+        ForEach(this.data!.articles.filter((a) => this.matchesFilter(a.id, a.tags)), (a: Article) => {
           ListItem() {
             this.rowItem(a.title, a.category, a.tags)
           }
@@ -127,7 +127,7 @@ export struct CategoryView {
 
   @Builder questionList() {
     List() {
-      ForEach(this.data!.questions.filter((q) => this.matchesFilter(q)), (q: Question) => {
+      ForEach(this.data!.questions.filter((q) => this.matchesFilter(q.id, q.tags)), (q: Question) => {
         ListItem() {
           this.rowItem(q.title, q.source, q.tags)
         }
