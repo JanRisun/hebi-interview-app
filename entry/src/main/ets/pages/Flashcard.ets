@@ -57,8 +57,8 @@ export struct FlashcardView {
   }
 
   build() {
-    // 用 TopStart 对齐：translate(x,y) 中 x/y 均为 vp（右/下为正），坐标直观、拖拽自然
-    Stack({ alignContent: Alignment.TopStart }) {
+    // Stack 用 BottomStart 对齐：悬浮按钮默认贴左下角，translate 做微调偏移
+    Stack({ alignContent: Alignment.BottomStart }) {
       // 底层：速记卡页面内容
       Column() {
       // 顶部标题 + 进度

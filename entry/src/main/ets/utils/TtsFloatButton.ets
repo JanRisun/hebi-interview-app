@@ -204,7 +204,7 @@ export struct TtsFloatButton {
     }
     .width(this.getPanelWidth())
     .height(this.floatState === FloatState.Collapsed ? this.BTN_SIZE : this.PANEL_HEIGHT)
-    .alignSelf(Alignment.BottomStart)                 // 锚定左下角，无需读取屏幕高度即可贴底
+    // Stack 对齐由页面控制（BottomStart = 左下角锚点），这里只用 translate 微调位置
     .translate({ x: this.totalX, y: this.totalY })    // x 右正、y 下正（baseY 已取负）
     .gesture(
       PanGesture()
