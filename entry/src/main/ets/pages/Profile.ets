@@ -118,16 +118,16 @@ export struct ProfileView {
       Scroll() {
         Column() {
           // 我的收藏（可点击进入收藏页，页内带搜索与返回）
-          this.entryRow('⭐', '我的收藏', '已收藏的题目与知识点', () => this.onFavorites())
+          this.entryRow('藏', '我的收藏', '已收藏的题目与知识点', () => this.onFavorites())
 
           // 我的学习记录（入口，点击进入带搜索的子页）
-          this.entryRow('📖', '我的学习记录', `已自评 ${this.rated.length} 道`, () => this.onStudyRecord())
+          this.entryRow('学', '我的学习记录', `已自评 ${this.rated.length} 道`, () => this.onStudyRecord())
 
           // 我的真题演练记录（入口，点击进入带搜索的子页）
-          this.entryRow('🎯', '我的真题演练记录', `已完成 ${this.sessions.length} 套`, () => this.onExamRecord())
+          this.entryRow('演', '我的真题演练记录', `已完成 ${this.sessions.length} 套`, () => this.onExamRecord())
 
           // 备考计划（入口，考试倒计时 + 复习任务清单）
-          this.entryRow('', '备考计划', '考试倒计时 + 复习任务清单', () => this.onStudyPlan())
+          this.entryRow('划', '备考计划', '考试倒计时 + 复习任务清单', () => this.onStudyPlan())
         }
         .width('92%')
         .alignItems(HorizontalAlign.Start)

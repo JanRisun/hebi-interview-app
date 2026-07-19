@@ -31,6 +31,15 @@ export default class EntryAbility extends UIAbility {
       .catch((e: Error) => hilog.error(DOMAIN, TAG, 'init failed: %{public}s', JSON.stringify(e)));
   }
 
+  // 热启动（App 已在后台）从通知/深链点开时走此回调，需同步更新 launchTarget
+  onNewWant(want: Want): void {
+    let launchTarget: string = '';
+    if (want.parameters && want.parameters['target']) {
+      launchTarget = want.parameters['target'] as string;
+    }
+    AppStorage.setOrCreate('launchTarget', launchTarget);
+  }
+
   onConfigurationUpdate(newConfig: Configuration): void {
     // 系统配置（含深浅色）变化时，同步最新 colorMode
     AppStorage.setOrCreate('currentColorMode', newConfig.colorMode);

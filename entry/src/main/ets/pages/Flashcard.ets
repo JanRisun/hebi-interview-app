@@ -98,7 +98,7 @@ export struct FlashcardView {
               .fontColor($r('app.color.text_primary'))
               .lineHeight(30)
               .textAlign(TextAlign.Center)
-            Text('👆 点击卡片翻转看详解')
+            Text('点击卡片翻转看详解')
               .fontSize(FONT.bodySm)
               .fontColor($r('app.color.text_hint'))
               .margin({ top: 20 })

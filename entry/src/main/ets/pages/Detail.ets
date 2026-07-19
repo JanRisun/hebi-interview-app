@@ -291,7 +291,7 @@ struct Detail {
             .onClick(() => { this.showAnswer = true; })
             .backgroundColor($r('app.color.brand'))
             .margin({ top: SPACE.xs, bottom: SPACE.xs })
-          Text('🔒 先自测口述，再对照参考答案')
+          Text('先自测口述，再对照参考答案')
             .fontSize(FONT.bodySm)
             .fontColor($r('app.color.text_secondary'))
             .margin({ top: SPACE.xs })
