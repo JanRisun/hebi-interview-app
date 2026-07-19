@@ -182,7 +182,7 @@ struct Detail {
           TtsButton({
             text: this.article!.title + '。' +
               this.article!.sections.map((s: Section) => (s.heading ? s.heading + '。' : '') + s.body).join('。'),
-            label: '🔊 朗读全文'
+            label: '朗读全文'
           })
         }
         .margin({ bottom: SPACE.md })
@@ -251,7 +251,7 @@ struct Detail {
         }
         // 语音播报：题目
         Row() {
-          TtsButton({ text: this.question!.prompt, label: '🔊 朗读题目' })
+          TtsButton({ text: this.question!.prompt, label: '朗读题目' })
         }
         .margin({ bottom: SPACE.md })
         // 我的标记（用户自定义标签，持久化）
@@ -277,7 +277,7 @@ struct Detail {
               .layoutWeight(1)   // 空间不足时标题收缩，把位置让给右侧朗读按钮
               .maxLines(1)
               .textOverflow({ overflow: TextOverflow.Ellipsis })
-            TtsButton({ text: this.question!.answerScript, label: '🔊 朗读解析' })
+            TtsButton({ text: this.question!.answerScript, label: '朗读解析' })
               .margin({ left: SPACE.md })
               .flexShrink(0)   // 不被压缩，保证按钮始终有完整宽度显示文字
           }

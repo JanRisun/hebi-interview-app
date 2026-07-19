@@ -183,7 +183,7 @@ export struct FlashcardView {
         // 之前用 Row({space:12}) 包单子项导致 ArkUI 横向宽度约束传递异常，按钮被压成空药丸。
         TtsButton({
           text: this.flipped ? this.cards[this.idx].body : this.cards[this.idx].title,
-          label: '🔊 朗读当前面'
+          label: '朗读当前面'
         })
         .margin({ top: 12 })
 

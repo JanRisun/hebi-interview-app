@@ -253,9 +253,9 @@ export struct TtsFloatButton {
   buildMiniBar() {
     Row() {
       Button() {
-        Text(this.paused ? '▶' : '⏸')
-          .fontSize(18)
-          .fontColor($r('app.color.on_primary'))
+      Text(this.paused ? '播' : '停')
+        .fontSize(18)
+        .fontColor(Color.White)
       }
       .width(40)
       .height(40)
@@ -345,9 +345,9 @@ export struct TtsFloatButton {
 
         // 暂停/继续（大按钮居中）
         Button() {
-          Text(this.paused ? '▶' : '⏸')
+          Text(this.paused ? '播' : '停')
             .fontSize(24)
-            .fontColor($r('app.color.on_primary'))
+            .fontColor(Color.White)
         }
         .width(52).height(52)
         .backgroundColor($r('app.color.brand')).borderRadius(26)
