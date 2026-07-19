@@ -5,6 +5,7 @@ import { preferences } from '@kit.ArkData';
 import { DataStore } from '../model/DataStore';
 import { AppData, Question, RatedItem } from '../model/Types';
 import { BackHeader } from '../utils/BackHeader';
+import { RADIUS } from '../utils/Theme';
 
 const PREF_NAME: string = 'practice';
 
@@ -49,11 +50,12 @@ struct StudyRecord {
     return out;
   }
 
-  private rateColor(r: string): string {
-    if (r === '掌握') return '#1a7f37';
-    if (r === '模糊') return '#b8860b';
-    if (r === '不会') return '#c0392b';
-    return '#999';
+  // 评级颜色随深浅模式切换
+  private rateColor(r: string): ResourceColor {
+    if (r === '掌握') return $r('app.color.success');
+    if (r === '模糊') return $r('app.color.warning');
+    if (r === '不会') return $r('app.color.danger');
+    return $r('app.color.text_tertiary');
   }
 
   build() {
@@ -68,8 +70,8 @@ struct StudyRecord {
           })
           .layoutWeight(1)
           .height(40)
-          .backgroundColor('#FFFFFF')
-          .borderRadius(20)
+          .backgroundColor($r('app.color.surface'))
+          .borderRadius(RADIUS.pill)
           .padding({ left: 14 })
       }
       .width('92%')
@@ -78,12 +80,12 @@ struct StudyRecord {
       if (this.rated.length === 0) {
         Text('还没有自评记录，去真题模考练一套吧')
           .fontSize(14)
-          .fontColor('#888')
+          .fontColor($r('app.color.text_secondary'))
           .margin(40)
       } else if (this.filterRated().length === 0) {
         Text(`没有匹配「${this.kw}」的记录`)
           .fontSize(14)
-          .fontColor('#888')
+          .fontColor($r('app.color.text_secondary'))
           .margin(40)
       } else {
         List() {
@@ -92,7 +94,7 @@ struct StudyRecord {
               Row() {
                 Text(r.title)
                   .fontSize(14)
-                  .fontColor('#1f2d3d')
+                  .fontColor($r('app.color.text_primary'))
                   .layoutWeight(1)
                   .maxLines(1)
                   .textOverflow({ overflow: TextOverflow.Ellipsis })
@@ -102,12 +104,12 @@ struct StudyRecord {
               }
               .width('100%')
               .padding(12)
-              .backgroundColor('#FFFFFF')
-              .borderRadius(8)
+              .backgroundColor($r('app.color.surface'))
+              .borderRadius(RADIUS.sm)
               .margin({ bottom: 6 })
               .onClick(() => router.pushUrl({ url: 'pages/Detail', params: { id: r.id, kind: 'question' } }))
             }
-          }, (r: RatedItem): string => r.id)
+          }, (r: RatedItem) => r.id)
         }
         .width('92%')
         .layoutWeight(1)
@@ -115,6 +117,6 @@ struct StudyRecord {
     }
     .width('100%')
     .height('100%')
-    .backgroundColor('#F5F7FA')
+    .backgroundColor($r('app.color.background'))
   }
 }

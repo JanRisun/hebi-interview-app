@@ -3,6 +3,7 @@ import { router } from '@kit.ArkUI';
 import { common } from '@kit.AbilityKit';
 import { DataStore } from '../model/DataStore';
 import { AppData, Article, Question } from '../model/Types';
+import { FONT, RADIUS, SPACE } from '../utils/Theme';
 
 @Component
 export struct CategoryView {
@@ -26,38 +27,38 @@ export struct CategoryView {
 
   @Builder groupHeader(title: string) {
     Text(title)
-      .fontSize(15)
+      .fontSize(FONT.body)
       .fontWeight(FontWeight.Bold)
-      .fontColor('#14385c')
-      .backgroundColor('#F5F7FA')
+      .fontColor($r('app.color.text_title'))
+      .backgroundColor($r('app.color.background'))
       .width('100%')
-      .padding({ top: 10, bottom: 6 })
+      .padding({ top: SPACE.md, bottom: SPACE.sm })
   }
 
   @Builder rowItem(title: string, sub: string) {
     Row() {
       Column() {
         Text(title)
-          .fontSize(15)
-          .fontColor('#1f2d3d')
+          .fontSize(FONT.body)
+          .fontColor($r('app.color.text_primary'))
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
         Text(sub)
-          .fontSize(12)
-          .fontColor('#888')
-          .margin({ top: 3 })
+          .fontSize(FONT.caption)
+          .fontColor($r('app.color.text_secondary'))
+          .margin({ top: SPACE.xs })
       }
       .layoutWeight(1)
       .alignItems(HorizontalAlign.Start)
       Text('›')
-        .fontSize(20)
-        .fontColor('#CCC')
+        .fontSize(FONT.title)
+        .fontColor($r('app.color.text_arrow'))
     }
     .width('100%')
-    .padding(14)
-    .backgroundColor('#FFFFFF')
-    .borderRadius(10)
-    .margin({ bottom: 8 })
+    .padding(SPACE.lg)
+    .backgroundColor($r('app.color.surface'))
+    .borderRadius(RADIUS.md)
+    .margin({ bottom: SPACE.sm })
   }
 
   @Builder articleList() {
@@ -74,7 +75,7 @@ export struct CategoryView {
       }, (cat: string) => cat)
     }
     .width('92%')
-    .margin({ top: 8 })
+    .margin({ top: SPACE.sm })
   }
 
   @Builder questionList() {
@@ -87,7 +88,7 @@ export struct CategoryView {
       }, (q: Question) => q.id)
     }
     .width('92%')
-    .margin({ top: 8 })
+    .margin({ top: SPACE.sm })
   }
 
   build() {
@@ -97,23 +98,23 @@ export struct CategoryView {
         TextInput({ placeholder: '搜索知识点 / 真题，进入全文检索', text: this.kw })
           .layoutWeight(1)
           .height(40)
-          .backgroundColor('#FFFFFF')
-          .borderRadius(20)
-          .padding({ left: 14 })
+          .backgroundColor($r('app.color.surface'))
+          .borderRadius(RADIUS.pill)
+          .padding({ left: SPACE.lg })
           .onChange((v: string) => {
             this.kw = v;
           })
           .onSubmit(() => this.onSearch())
         if (this.kw.trim()) {
           Text('搜索')
-            .fontSize(14)
-            .fontColor('#185FA5')
-            .padding({ left: 10, right: 2 })
+            .fontSize(FONT.bodySm)
+            .fontColor($r('app.color.brand'))
+            .padding({ left: SPACE.sm, right: SPACE.xs })
             .onClick(() => this.onSearch())
         }
       }
       .width('92%')
-      .margin({ top: 14, bottom: 8 })
+      .margin({ top: SPACE.lg, bottom: SPACE.sm })
 
       if (this.data) {
         Tabs({ index: this.tab === 'questions' ? 1 : 0, barPosition: BarPosition.Start }) {
@@ -129,13 +130,13 @@ export struct CategoryView {
         .layoutWeight(1)
       } else {
         Text('加载中…')
-          .fontSize(14)
-          .fontColor('#888')
-          .margin(40)
+          .fontSize(FONT.bodySm)
+          .fontColor($r('app.color.text_secondary'))
+          .margin(SPACE.xl)
       }
     }
     .width('100%')
     .height('100%')
-    .backgroundColor('#F5F7FA')
+    .backgroundColor($r('app.color.background'))
   }
 }

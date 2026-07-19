@@ -6,6 +6,7 @@ import { common } from '@kit.AbilityKit';
 import { DataStore } from '../model/DataStore';
 import { AppData, Question, MockSet, PracticeSession } from '../model/Types';
 import { preferences } from '@kit.ArkData';
+import { RADIUS } from '../utils/Theme';
 
 const PREF_NAME: string = 'practice';
 
@@ -263,20 +264,20 @@ export struct PracticeView {
   // 自评选择行（复盘/报告复用）
   @Builder ratingRow(id: string) {
     Row({ space: 10 }) {
-      this.rateBtn(id, '掌握', '#1a7f37')
-      this.rateBtn(id, '模糊', '#b8860b')
-      this.rateBtn(id, '不会', '#c0392b')
+      this.rateBtn(id, '掌握', $r('app.color.success'))
+      this.rateBtn(id, '模糊', $r('app.color.warning'))
+      this.rateBtn(id, '不会', $r('app.color.danger'))
     }
   }
 
-  @Builder rateBtn(id: string, label: string, color: string) {
+  @Builder rateBtn(id: string, label: string, color: ResourceColor) {
     Button(label)
       .fontSize(13)
       .height(34)
       .padding({ left: 14, right: 14 })
-      .backgroundColor(this.ratings[id] === label ? color : '#EEF2F7')
-      .fontColor(this.ratings[id] === label ? '#FFFFFF' : color)
-      .borderRadius(17)
+      .backgroundColor(this.ratings[id] === label ? color : $r('app.color.surface_variant'))
+      .fontColor(this.ratings[id] === label ? $r('app.color.on_primary') : color)
+      .borderRadius(RADIUS.pill)
       .onClick(() => this.onRate(id, label))
   }
 
@@ -287,12 +288,12 @@ export struct PracticeView {
         Text(s.title)
           .fontSize(15)
           .fontWeight(FontWeight.Medium)
-          .fontColor('#1f2d3d')
+          .fontColor($r('app.color.text_primary'))
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
         Text(`${s.questionIds.length} 题 · ${s.source}`)
           .fontSize(12)
-          .fontColor('#888')
+          .fontColor($r('app.color.text_secondary'))
           .margin({ top: 4 })
       }
       .layoutWeight(1)
@@ -301,17 +302,17 @@ export struct PracticeView {
       if (s.totalSpeak > 0) {
         Text(`建议 ${this.fmt(s.totalThink + s.totalSpeak)}`)
           .fontSize(12)
-          .fontColor('#185FA5')
+          .fontColor($r('app.color.brand'))
           .margin({ right: 8 })
       }
       Text('›')
         .fontSize(20)
-        .fontColor('#CCC')
+        .fontColor($r('app.color.text_arrow'))
     }
     .width('100%')
     .padding(14)
-    .backgroundColor('#FFFFFF')
-    .borderRadius(10)
+    .backgroundColor($r('app.color.surface'))
+    .borderRadius(RADIUS.md)
     .margin({ bottom: 8 })
     .onClick(() => this.onStartSet(s))
   }
@@ -323,7 +324,7 @@ export struct PracticeView {
         if (this.data) {
           Text(`真题模考 · 共 ${this.sets.length} 套（含 25 套强化训练 + 7 套历年真题）`)
             .fontSize(13)
-            .fontColor('#185FA5')
+            .fontColor($r('app.color.brand'))
             .margin({ top: 16, bottom: 6 })
         }
         // 顶部搜索框（搜真题 / 来源）
@@ -331,8 +332,8 @@ export struct PracticeView {
           .width('92%')
           .height(38)
           .fontSize(14)
-          .backgroundColor('#FFFFFF')
-          .borderRadius(19)
+          .backgroundColor($r('app.color.surface'))
+          .borderRadius(RADIUS.pill)
           .padding({ left: 14 })
           .margin({ top: 4, bottom: 10 })
           .onChange((v: string) => {
@@ -343,9 +344,9 @@ export struct PracticeView {
           .width('92%')
           .height(40)
           .fontSize(14)
-          .backgroundColor('#14385c')
-          .fontColor('#FFFFFF')
-          .borderRadius(20)
+          .backgroundColor($r('app.color.brand'))
+          .fontColor($r('app.color.on_primary'))
+          .borderRadius(RADIUS.pill)
           .margin({ bottom: 12 })
           .onClick(() => this.onStartSingle())
         // 套题列表（受搜索过滤）
@@ -362,18 +363,18 @@ export struct PracticeView {
           Row() {
             Button('‹ 返回选套')
               .fontSize(13)
-              .fontColor('#185FA5')
-              .backgroundColor('#00000000')   // 全透明背景（替代 Color.Transparent）
+              .fontColor($r('app.color.brand'))
+              .backgroundColor($r('app.color.transparent'))   // 全透明背景（替代 Color.Transparent）
               .onClick(() => this.onBackToSelect())
             Column() {
               Text(`第 ${this.idx + 1} / ${this.qList.length} 题`)
                 .fontSize(14)
-                .fontColor('#14385c')
+                .fontColor($r('app.color.text_title'))
                 .fontWeight(FontWeight.Medium)
               if (this.curSet) {
                 Text(this.curSet.title)
                   .fontSize(12)
-                  .fontColor('#888')
+                  .fontColor($r('app.color.text_secondary'))
                   .margin({ top: 2 })
               }
             }
@@ -381,7 +382,7 @@ export struct PracticeView {
             .alignItems(HorizontalAlign.Center)
             Text(`用时 ${this.fmt(this.elapsed)}`)
               .fontSize(14)
-              .fontColor(this.elapsed > this.suggestedSec ? '#c0392b' : '#14385c')
+              .fontColor(this.elapsed > this.suggestedSec ? $r('app.color.danger') : $r('app.color.text_title'))
               .fontWeight(FontWeight.Medium)
           }
           .width('92%')
@@ -390,7 +391,7 @@ export struct PracticeView {
           if (this.curSet && this.suggestedSec > 0) {
             Text(`本套建议总时长 ${this.fmt(this.suggestedSec)}（思考+作答），超时也无妨，重在模拟节奏`)
               .fontSize(12)
-              .fontColor('#888')
+              .fontColor($r('app.color.text_secondary'))
               .width('92%')
               .margin({ bottom: 8 })
           }
@@ -401,16 +402,16 @@ export struct PracticeView {
                 Text('【题目】')
                   .fontSize(15)
                   .fontWeight(FontWeight.Medium)
-                  .fontColor('#185FA5')
+                  .fontColor($r('app.color.brand'))
                   .margin({ bottom: 6 })
                 Text(this.qList[this.idx].prompt)
                   .fontSize(16)
-                  .fontColor('#1f2d3d')
+                  .fontColor($r('app.color.text_primary'))
                   .lineHeight(26)
 
                 Text('我的作答要点（可选，仅存本机，复盘时对照）')
                   .fontSize(13)
-                  .fontColor('#14385c')
+                  .fontColor($r('app.color.text_title'))
                   .margin({ top: 20, bottom: 6 })
                 TextArea({
                   text: this.notes[this.curId] ?? '',
@@ -418,8 +419,8 @@ export struct PracticeView {
                 })
                   .fontSize(14)
                   .height(120)
-                  .backgroundColor('#FFFFFF')
-                  .borderRadius(10)
+                  .backgroundColor($r('app.color.surface'))
+                  .borderRadius(RADIUS.md)
                   .onChange((v: string): void => {
                     this.onNoteChange(v);
                   })
@@ -435,33 +436,33 @@ export struct PracticeView {
             .width('92%')
             .height(46)
             .fontSize(16)
-            .backgroundColor('#185FA5')
-            .fontColor('#FFFFFF')
-            .borderRadius(23)
+            .backgroundColor($r('app.color.brand'))
+            .fontColor($r('app.color.on_primary'))
+            .borderRadius(RADIUS.pill)
             .margin({ bottom: 16 })
             .onClick(() => this.onNext())
         }
         .width('100%')
         .height('100%')
-        .backgroundColor('#F5F7FA')
+        .backgroundColor($r('app.color.background'))
       } else if (this.phase === 'review') {
         // 整卷复盘：逐题出参考答案 + 自评
         Column() {
           Row() {
             Button('‹ 选套')
               .fontSize(13)
-              .fontColor('#185FA5')
-              .backgroundColor('#00000000')
+              .fontColor($r('app.color.brand'))
+              .backgroundColor($r('app.color.transparent'))
               .onClick(() => this.onBackToSelect())
             Text('整卷复盘')
               .fontSize(16)
               .fontWeight(FontWeight.Bold)
-              .fontColor('#14385c')
+              .fontColor($r('app.color.text_title'))
               .layoutWeight(1)
               .textAlign(TextAlign.Center)
             Text(`用时 ${this.fmt(this.elapsed)}`)
               .fontSize(13)
-              .fontColor('#888')
+              .fontColor($r('app.color.text_secondary'))
           }
           .width('92%')
           .margin({ top: 14, bottom: 8 })
@@ -473,22 +474,22 @@ export struct PracticeView {
                   Text(`第 ${i + 1} 题 · ${q.type}`)
                     .fontSize(15)
                     .fontWeight(FontWeight.Medium)
-                    .fontColor('#14385c')
+                    .fontColor($r('app.color.text_title'))
                     .margin({ bottom: 6 })
                   Text(q.prompt)
                     .fontSize(14)
-                    .fontColor('#1f2d3d')
+                    .fontColor($r('app.color.text_primary'))
                     .lineHeight(22)
                     .margin({ bottom: 8 })
 
                   if (this.notes[q.id]) {
                     Text('我的作答要点')
                       .fontSize(13)
-                      .fontColor('#b8860b')
+                      .fontColor($r('app.color.warning'))
                       .margin({ bottom: 2 })
                     Text(this.notes[q.id])
                       .fontSize(13)
-                      .fontColor('#555')
+                      .fontColor($r('app.color.text_body'))
                       .lineHeight(20)
                       .margin({ bottom: 8 })
                   }
@@ -496,11 +497,11 @@ export struct PracticeView {
                   Text('【参考答案 · 逐字稿】')
                     .fontSize(14)
                     .fontWeight(FontWeight.Medium)
-                    .fontColor('#185FA5')
+                    .fontColor($r('app.color.brand'))
                     .margin({ bottom: 4 })
                   Text(q.answerScript)
                     .fontSize(14)
-                    .fontColor('#2c2c2a')
+                    .fontColor($r('app.color.text_body'))
                     .lineHeight(22)
                     .margin({ bottom: 10 })
 
@@ -508,8 +509,8 @@ export struct PracticeView {
                 }
                 .width('100%')
                 .padding(14)
-                .backgroundColor('#FFFFFF')
-                .borderRadius(12)
+                .backgroundColor($r('app.color.surface'))
+                .borderRadius(RADIUS.md)
                 .margin({ bottom: 12 })
                 .alignItems(HorizontalAlign.Start)
               }, (q: Question): string => q.id)
@@ -524,28 +525,28 @@ export struct PracticeView {
             .width('92%')
             .height(46)
             .fontSize(16)
-            .backgroundColor('#14385c')
-            .fontColor('#FFFFFF')
-            .borderRadius(23)
+            .backgroundColor($r('app.color.brand'))
+            .fontColor($r('app.color.on_primary'))
+            .borderRadius(RADIUS.pill)
             .margin({ bottom: 16 })
             .onClick(() => this.onToReport())
         }
         .width('100%')
         .height('100%')
-        .backgroundColor('#F5F7FA')
+        .backgroundColor($r('app.color.background'))
       } else {
         // 练习报告
         Column() {
           Row() {
             Button('‹ 选套')
               .fontSize(13)
-              .fontColor('#185FA5')
-              .backgroundColor('#00000000')
+              .fontColor($r('app.color.brand'))
+              .backgroundColor($r('app.color.transparent'))
               .onClick(() => this.onBackToSelect())
             Text('练习报告')
               .fontSize(16)
               .fontWeight(FontWeight.Bold)
-              .fontColor('#14385c')
+              .fontColor($r('app.color.text_title'))
               .layoutWeight(1)
               .textAlign(TextAlign.Center)
             Blank()
@@ -555,10 +556,10 @@ export struct PracticeView {
 
           // 统计卡
           Row({ space: 10 }) {
-            this.statCard('总用时', this.fmt(this.elapsed), '#14385c')
-            this.statCard('掌握', `${this.masterCount}`, '#1a7f37')
-            this.statCard('模糊', `${this.vagueCount}`, '#b8860b')
-            this.statCard('不会', `${this.failCount}`, '#c0392b')
+            this.statCard('总用时', this.fmt(this.elapsed), $r('app.color.text_title'))
+            this.statCard('掌握', `${this.masterCount}`, $r('app.color.success'))
+            this.statCard('模糊', `${this.vagueCount}`, $r('app.color.warning'))
+            this.statCard('不会', `${this.failCount}`, $r('app.color.danger'))
           }
           .width('92%')
           .margin({ bottom: 12 })
@@ -569,11 +570,11 @@ export struct PracticeView {
                 Row() {
                   Text(`第 ${i + 1} 题`)
                     .fontSize(13)
-                    .fontColor('#888')
+                    .fontColor($r('app.color.text_secondary'))
                     .width(52)
                   Text(q.title)
                     .fontSize(13)
-                    .fontColor('#1f2d3d')
+                    .fontColor($r('app.color.text_primary'))
                     .layoutWeight(1)
                     .maxLines(1)
                     .textOverflow({ overflow: TextOverflow.Ellipsis })
@@ -583,8 +584,8 @@ export struct PracticeView {
                 }
                 .width('100%')
                 .padding(10)
-                .backgroundColor('#FFFFFF')
-                .borderRadius(8)
+                .backgroundColor($r('app.color.surface'))
+                .borderRadius(RADIUS.sm)
                 .margin({ bottom: 6 })
               }, (q: Question): string => q.id)
             }
@@ -598,20 +599,20 @@ export struct PracticeView {
             .width('92%')
             .height(46)
             .fontSize(16)
-            .backgroundColor('#185FA5')
-            .fontColor('#FFFFFF')
-            .borderRadius(23)
+            .backgroundColor($r('app.color.brand'))
+            .fontColor($r('app.color.on_primary'))
+            .borderRadius(RADIUS.pill)
             .margin({ bottom: 16 })
             .onClick(() => this.onBackToSelect())
         }
         .width('100%')
         .height('100%')
-        .backgroundColor('#F5F7FA')
+        .backgroundColor($r('app.color.background'))
       }
     }
     .width('100%')
     .height('100%')
-    .backgroundColor('#F5F7FA')
+    .backgroundColor($r('app.color.background'))
   }
 
   // 辅助：统计某评级数量
@@ -629,16 +630,16 @@ export struct PracticeView {
     return r;
   }
 
-  // 辅助：获取评级颜色
-  private ratingColor(qid: string): string {
+  // 辅助：获取评级颜色（ResourceColor，随深浅模式切换）
+  private ratingColor(qid: string): ResourceColor {
     const r: string = this.ratings[qid];
-    if (r === '掌握') return '#1a7f37';
-    if (r === '模糊') return '#b8860b';
-    if (r === '不会') return '#c0392b';
-    return '#999';
+    if (r === '掌握') return $r('app.color.success');
+    if (r === '模糊') return $r('app.color.warning');
+    if (r === '不会') return $r('app.color.danger');
+    return $r('app.color.text_tertiary');
   }
 
-  @Builder statCard(label: string, value: string, color: string) {
+  @Builder statCard(label: string, value: string, color: ResourceColor) {
     Column() {
       Text(value)
         .fontSize(20)
@@ -646,13 +647,13 @@ export struct PracticeView {
         .fontColor(color)
       Text(label)
         .fontSize(12)
-        .fontColor('#888')
+        .fontColor($r('app.color.text_secondary'))
         .margin({ top: 2 })
     }
     .width('18%')
     .padding(10)
-    .backgroundColor('#FFFFFF')
-    .borderRadius(10)
+    .backgroundColor($r('app.color.surface'))
+    .borderRadius(RADIUS.md)
     .alignItems(HorizontalAlign.Center)
   }
 }

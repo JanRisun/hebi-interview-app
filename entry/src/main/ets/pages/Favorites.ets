@@ -4,6 +4,7 @@ import { DataStore } from '../model/DataStore';
 import { AppData, Article, Question } from '../model/Types';
 import { FavStore } from '../utils/FavStore';
 import { BackHeader } from '../utils/BackHeader';
+import { RADIUS } from '../utils/Theme';
 
 interface FavItem {
   id: string;
@@ -68,8 +69,8 @@ struct Favorites {
           })
           .layoutWeight(1)
           .height(40)
-          .backgroundColor('#FFFFFF')
-          .borderRadius(20)
+          .backgroundColor($r('app.color.surface'))
+          .borderRadius(RADIUS.pill)
           .padding({ left: 14 })
       }
       .width('92%')
@@ -78,12 +79,12 @@ struct Favorites {
       if (this.items.length === 0) {
         Text('还没有收藏，去详情页点击 ☆ 收藏吧')
           .fontSize(14)
-          .fontColor('#888')
+          .fontColor($r('app.color.text_secondary'))
           .margin(40)
       } else if (this.filterFavs().length === 0) {
         Text(`没有匹配「${this.kw}」的收藏`)
           .fontSize(14)
-          .fontColor('#888')
+          .fontColor($r('app.color.text_secondary'))
           .margin(40)
       } else {
         List() {
@@ -93,24 +94,24 @@ struct Favorites {
                 Column() {
                   Text(it.title)
                     .fontSize(15)
-                    .fontColor('#1f2d3d')
+                    .fontColor($r('app.color.text_primary'))
                     .maxLines(1)
                     .textOverflow({ overflow: TextOverflow.Ellipsis })
                   Text(`${it.kind === 'article' ? '知识点' : '真题'} · ${it.sub}`)
                     .fontSize(12)
-                    .fontColor('#888')
+                    .fontColor($r('app.color.text_secondary'))
                     .margin({ top: 3 })
                 }
                 .layoutWeight(1)
                 .alignItems(HorizontalAlign.Start)
                 Text('›')
                   .fontSize(20)
-                  .fontColor('#CCC')
+                  .fontColor($r('app.color.text_arrow'))
               }
               .width('100%')
               .padding(14)
-              .backgroundColor('#FFFFFF')
-              .borderRadius(10)
+              .backgroundColor($r('app.color.surface'))
+              .borderRadius(RADIUS.md)
               .margin({ bottom: 8 })
               .onClick(() => router.pushUrl({ url: 'pages/Detail', params: { id: it.id, kind: it.kind } }))
             }
@@ -122,6 +123,6 @@ struct Favorites {
     }
     .width('100%')
     .height('100%')
-    .backgroundColor('#F5F7FA')
+    .backgroundColor($r('app.color.background'))
   }
 }

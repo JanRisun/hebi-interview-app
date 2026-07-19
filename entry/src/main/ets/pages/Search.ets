@@ -3,6 +3,7 @@ import { common } from '@kit.AbilityKit';
 import { DataStore } from '../model/DataStore';
 import { AppData, SearchHit } from '../model/Types';
 import { searchAll } from '../model/SearchEngine';
+import { RADIUS } from '../utils/Theme';
 
 @Entry
 @Component
@@ -41,14 +42,16 @@ struct SearchPage {
           })
           .layoutWeight(1)
           .height(40)
-          .backgroundColor('#FFFFFF')
-          .borderRadius(20)
+          .backgroundColor($r('app.color.surface'))
+          .borderRadius(RADIUS.pill)
           .padding({ left: 14 })
         Button('搜索')
           .onClick(() => this.doSearch())
           .height(40)
           .margin({ left: 8 })
-          .backgroundColor('#185FA5')
+          .backgroundColor($r('app.color.brand'))
+          .fontColor($r('app.color.on_primary'))
+          .borderRadius(RADIUS.pill)
       }
       .width('92%')
       .margin({ top: 12, bottom: 10 })
@@ -59,9 +62,9 @@ struct SearchPage {
             Text(k)
               .fontSize(12)
               .padding({ left: 12, right: 12, top: 5, bottom: 5 })
-              .backgroundColor('#E6F1FB')
-              .fontColor('#185FA5')
-              .borderRadius(14)
+              .backgroundColor($r('app.color.tag_bg'))
+              .fontColor($r('app.color.brand'))
+              .borderRadius(RADIUS.lg)
               .margin(4)
               .onClick(() => {
                 this.kw = k;
@@ -80,22 +83,22 @@ struct SearchPage {
                 Text(h.title)
                   .fontSize(15)
                   .fontWeight(FontWeight.Medium)
-                  .fontColor('#1f2d3d')
+                  .fontColor($r('app.color.text_primary'))
                 Text(`${h.kind === 'article' ? '知识点' : '真题'} · ${h.category}`)
                   .fontSize(12)
-                  .fontColor('#888')
+                  .fontColor($r('app.color.text_secondary'))
                   .margin({ top: 4 })
               }
               .layoutWeight(1)
               .alignItems(HorizontalAlign.Start)
               Text('›')
                 .fontSize(20)
-                .fontColor('#CCC')
+                .fontColor($r('app.color.text_arrow'))
             }
             .width('100%')
             .padding(14)
-            .backgroundColor('#FFFFFF')
-            .borderRadius(10)
+            .backgroundColor($r('app.color.surface'))
+            .borderRadius(RADIUS.md)
             .margin({ bottom: 8 })
             .onClick(() => {
               router.pushUrl({ url: 'pages/Detail', params: { id: h.id, kind: h.kind } });
@@ -109,6 +112,6 @@ struct SearchPage {
     }
     .width('100%')
     .height('100%')
-    .backgroundColor('#F5F7FA')
+    .backgroundColor($r('app.color.background'))
   }
 }

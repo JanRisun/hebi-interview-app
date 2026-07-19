@@ -3,6 +3,7 @@ import { router } from '@kit.ArkUI';
 import { common } from '@kit.AbilityKit';
 import { DataStore } from '../model/DataStore';
 import { Section } from '../model/Types';
+import { FONT, RADIUS, SPACE } from '../utils/Theme';
 
 interface Card {
   title: string;
@@ -58,43 +59,43 @@ export struct FlashcardView {
       // 顶部标题 + 进度
       Row() {
         Text('速记卡')
-          .fontSize(20)
+          .fontSize(FONT.display)
           .fontWeight(FontWeight.Bold)
-          .fontColor('#14385c')
+          .fontColor($r('app.color.text_title'))
         if (this.cards.length > 0) {
           Text(`  ${this.idx + 1} / ${this.cards.length}`)
-            .fontSize(14)
-            .fontColor('#888')
+            .fontSize(FONT.bodySm)
+            .fontColor($r('app.color.text_secondary'))
             .layoutWeight(1)
             .textAlign(TextAlign.End)
         }
       }
       .width('92%')
-      .margin({ top: 16, bottom: 12 })
+      .margin({ top: SPACE.lg, bottom: SPACE.md })
 
       if (this.cards.length === 0) {
         Text('加载中…')
-          .fontSize(14)
-          .fontColor('#888')
-          .margin(40)
+          .fontSize(FONT.bodySm)
+          .fontColor($r('app.color.text_secondary'))
+          .margin(SPACE.xl)
       } else {
         // 百词斩式：大卡片居中，点击翻转；左右滑切换/进收藏
         Stack() {
           // 正面：知识点要点
           Column() {
             Text('要点')
-              .fontSize(12)
-              .fontColor('#185FA5')
-              .margin({ bottom: 12 })
+              .fontSize(FONT.caption)
+              .fontColor($r('app.color.brand'))
+              .margin({ bottom: SPACE.md })
             Text(this.cards[this.idx].title)
-              .fontSize(20)
+              .fontSize(FONT.display)
               .fontWeight(FontWeight.Bold)
-              .fontColor('#1f2d3d')
+              .fontColor($r('app.color.text_primary'))
               .lineHeight(30)
               .textAlign(TextAlign.Center)
             Text('👆 点击卡片翻转看详解')
-              .fontSize(13)
-              .fontColor('#aaa')
+              .fontSize(FONT.bodySm)
+              .fontColor($r('app.color.text_hint'))
               .margin({ top: 20 })
           }
           .width('100%')
@@ -109,12 +110,12 @@ export struct FlashcardView {
           Scroll() {
             Column() {
               Text('详解')
-                .fontSize(12)
-                .fontColor('#185FA5')
-                .margin({ bottom: 10 })
+                .fontSize(FONT.caption)
+                .fontColor($r('app.color.brand'))
+                .margin({ bottom: SPACE.sm })
               Text(this.cards[this.idx].body)
-                .fontSize(15)
-                .fontColor('#2c2c2a')
+                .fontSize(FONT.body)
+                .fontColor($r('app.color.text_body'))
                 .lineHeight(24)
             }
             .width('100%')
@@ -129,8 +130,8 @@ export struct FlashcardView {
         }
         .width('88%')
         .height(360)
-        .backgroundColor('#FFFFFF')
-        .borderRadius(18)
+        .backgroundColor($r('app.color.surface'))
+        .borderRadius(RADIUS.lg)
         .shadow({ radius: 12, color: '#22000000', offsetX: 0, offsetY: 4 })
         .onClick(() => this.toggleFlip())
         .gesture(
@@ -143,29 +144,29 @@ export struct FlashcardView {
         // 底部操作
         Row({ space: 12 }) {
           Button('上一张')
-            .fontSize(14)
+            .fontSize(FONT.bodySm)
             .height(42)
             .layoutWeight(1)
-            .backgroundColor('#3a3a3a')
-            .fontColor('#FFFFFF')
-            .borderRadius(21)
+            .backgroundColor($r('app.color.btn_neutral_bg'))
+            .fontColor($r('app.color.on_primary'))
+            .borderRadius(RADIUS.pill)
             .enabled(this.idx > 0)
             .onClick(() => this.go(-1))
           Button(this.flipped ? '看要点' : '翻转')
-            .fontSize(14)
+            .fontSize(FONT.bodySm)
             .height(42)
             .layoutWeight(1)
-            .backgroundColor('#185FA5')
-            .fontColor('#FFFFFF')
-            .borderRadius(21)
+            .backgroundColor($r('app.color.brand'))
+            .fontColor($r('app.color.on_primary'))
+            .borderRadius(RADIUS.pill)
             .onClick(() => this.toggleFlip())
           Button('下一张')
-            .fontSize(14)
+            .fontSize(FONT.bodySm)
             .height(42)
             .layoutWeight(1)
-            .backgroundColor('#14385c')
-            .fontColor('#FFFFFF')
-            .borderRadius(21)
+            .backgroundColor($r('app.color.brand'))
+            .fontColor($r('app.color.on_primary'))
+            .borderRadius(RADIUS.pill)
             .enabled(this.idx < this.cards.length - 1)
             .onClick(() => this.go(1))
         }
@@ -173,13 +174,13 @@ export struct FlashcardView {
         .margin({ top: 20 })
 
         Text('提示：像百词斩一样先凭记忆回想，再翻转核对；左滑下一张，右滑进收藏')
-          .fontSize(12)
-          .fontColor('#999')
+          .fontSize(FONT.caption)
+          .fontColor($r('app.color.text_tertiary'))
           .margin({ top: 14 })
       }
     }
     .width('100%')
     .height('100%')
-    .backgroundColor('#F5F7FA')
+    .backgroundColor($r('app.color.background'))
   }
 }

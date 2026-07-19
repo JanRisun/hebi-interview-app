@@ -4,6 +4,7 @@ import { common } from '@kit.AbilityKit';
 import { preferences } from '@kit.ArkData';
 import { DataStore } from '../model/DataStore';
 import { AppData, Question, RatedItem, PracticeSession } from '../model/Types';
+import { FONT, RADIUS, SPACE } from '../utils/Theme';
 
 const PREF_NAME: string = 'practice';
 
@@ -75,35 +76,35 @@ export struct ProfileView {
     Row() {
       Column() {
         Text(`${icon} ${title}`)
-          .fontSize(15)
+          .fontSize(FONT.body)
           .fontWeight(FontWeight.Medium)
-          .fontColor('#1f2d3d')
+          .fontColor($r('app.color.text_primary'))
         Text(sub)
-          .fontSize(12)
-          .fontColor('#888')
-          .margin({ top: 3 })
+          .fontSize(FONT.caption)
+          .fontColor($r('app.color.text_secondary'))
+          .margin({ top: SPACE.xs })
       }
       .layoutWeight(1)
       .alignItems(HorizontalAlign.Start)
       Text('›')
-        .fontSize(20)
-        .fontColor('#CCC')
+        .fontSize(FONT.title)
+        .fontColor($r('app.color.text_arrow'))
     }
     .width('100%')
-    .padding(14)
-    .backgroundColor('#FFFFFF')
-    .borderRadius(10)
-    .margin({ bottom: 14 })
+    .padding(SPACE.lg)
+    .backgroundColor($r('app.color.surface'))
+    .borderRadius(RADIUS.md)
+    .margin({ bottom: SPACE.lg })
     .onClick(cb)
   }
 
   build() {
     Column() {
       Text('个人中心')
-        .fontSize(20)
+        .fontSize(FONT.display)
         .fontWeight(FontWeight.Bold)
-        .fontColor('#14385c')
-        .margin({ top: 16, bottom: 12 })
+        .fontColor($r('app.color.text_title'))
+        .margin({ top: SPACE.lg, bottom: SPACE.md })
 
       Scroll() {
         Column() {
@@ -124,6 +125,6 @@ export struct ProfileView {
     }
     .width('100%')
     .height('100%')
-    .backgroundColor('#F5F7FA')
+    .backgroundColor($r('app.color.background'))
   }
 }

@@ -21,6 +21,18 @@
 - 持久化：收藏 / 自评记录 / 模考记录 均用 `@kit.ArkData` Preferences
 - 检索：纯前端本地全文匹配，无需联网
 
+## 设计系统（Design Tokens + 深浅模式）
+
+按 HarmonyOS Design「One Harmonious Universe」规范做了统一视觉升级，全部锁定 **API 12**，未引入 HarmonyOS 6 新能力（沉浸光感 / 悬浮页签等需 API 23，标记 `[需核实]`）。
+
+- **颜色语义 Token**：集中在 `resources/base/element/color.json`（浅色）与 `resources/dark/element/color.json`（深色），键名一一对应，由资源系统随系统深浅**自动切换**；页面统一通过 `$r('app.color.*')` 引用，不再散落硬编码色值。主色沿用品牌蓝 `#185FA5`（深色模式提亮为 `#4A90D9`）。
+- **字号 / 间距 / 圆角常量**：集中在 `entry/src/main/ets/utils/Theme.ets`（`FONT` / `SPACE` / `RADIUS`），全局复用，避免魔法数字。
+  - 字号阶梯：display 20 / title 18 / body 16 / bodySm 14 / caption 12 / mini 11
+  - 间距（4dp 基数）：xs 4 / sm 8 / md 12 / lg 16 / xl 24
+  - 圆角：sm 8 / md 12 / lg 16 / pill 20 / xl 24
+- **深色模式**：开箱即用——跟随系统设置，资源系统自动在 base↔dark 间切换；`EntryAbility` 另将当前 `colorMode` 同步进 `AppStorage` 供页面参考。
+- **底部 Tab 图标**：由 emoji 替换为系统 **SymbolGlyph**（`sys.symbol.book` / `rectangle_stack` / `edit` / `person`），选中态高亮品牌色，矢量清晰、随字重缩放。
+
 ## 导入与运行（需在本地完成）
 
 > 以下必须在你本地的 **DevEco Studio** 中完成。当前环境没有 DevEco / 鸿蒙 SDK / 签名证书，无法在此编译打包。
@@ -63,7 +75,7 @@ HebiInterviewApp/
         ├── ets/
         │   ├── entryability/EntryAbility.ts
         │   ├── model/    (Types / DataStore / SearchEngine)
-        │   ├── utils/    (FavStore / BackHeader)
+        │   ├── utils/    (FavStore / BackHeader / Theme)
         │   └── pages/
         │       ├── Index.ets          # 底部 4 Tab 容器（素材/速记卡/模考/个人中心）
         │       ├── Category.ets       # → CategoryView（嵌入 Index「素材」Tab）

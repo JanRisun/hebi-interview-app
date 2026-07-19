@@ -3,6 +3,7 @@ import { common } from '@kit.AbilityKit';
 import { DataStore } from '../model/DataStore';
 import { Article, Question, Section } from '../model/Types';
 import { FavStore } from '../utils/FavStore';
+import { FONT, RADIUS, SPACE } from '../utils/Theme';
 
 @Entry
 @Component
@@ -38,26 +39,26 @@ struct Detail {
     Scroll() {
       Column() {
         Text(this.article!.title)
-          .fontSize(20)
+          .fontSize(FONT.display)
           .fontWeight(FontWeight.Bold)
-          .fontColor('#14385c')
-          .margin({ bottom: 6 })
+          .fontColor($r('app.color.text_title'))
+          .margin({ bottom: SPACE.sm })
         Text(this.article!.category)
-          .fontSize(12)
-          .fontColor('#888')
-          .margin({ bottom: 12 })
+          .fontSize(FONT.caption)
+          .fontColor($r('app.color.text_secondary'))
+          .margin({ bottom: SPACE.md })
         ForEach(this.article!.sections, (s: Section) => {
           Column() {
             if (s.heading) {
               Text(s.heading)
-                .fontSize(16)
+                .fontSize(FONT.title)
                 .fontWeight(FontWeight.Medium)
-                .fontColor('#185FA5')
-                .margin({ top: 14, bottom: 4 })
+                .fontColor($r('app.color.brand'))
+                .margin({ top: SPACE.md, bottom: SPACE.xs })
             }
             Text(s.body)
-              .fontSize(14)
-              .fontColor('#2c2c2a')
+              .fontSize(FONT.bodySm)
+              .fontColor($r('app.color.text_body'))
               .lineHeight(22)
           }
           .alignItems(HorizontalAlign.Start)
@@ -75,51 +76,51 @@ struct Detail {
     Scroll() {
       Column() {
         Text(this.question!.title)
-          .fontSize(20)
+          .fontSize(FONT.display)
           .fontWeight(FontWeight.Bold)
-          .fontColor('#14385c')
-          .margin({ bottom: 6 })
+          .fontColor($r('app.color.text_title'))
+          .margin({ bottom: SPACE.sm })
         Row() {
           Text(this.question!.type)
-            .fontSize(12)
-            .fontColor('#185FA5')
-            .backgroundColor('#E6F1FB')
-            .borderRadius(8)
-            .padding({ left: 8, right: 8, top: 3, bottom: 3 })
+            .fontSize(FONT.caption)
+            .fontColor($r('app.color.brand'))
+            .backgroundColor($r('app.color.tag_bg'))
+            .borderRadius(RADIUS.sm)
+            .padding({ left: SPACE.sm, right: SPACE.sm, top: SPACE.xs, bottom: SPACE.xs })
           Text(this.question!.source)
-            .fontSize(12)
-            .fontColor('#888')
-            .margin({ left: 8 })
-        }.margin({ bottom: 12 })
+            .fontSize(FONT.caption)
+            .fontColor($r('app.color.text_secondary'))
+            .margin({ left: SPACE.sm })
+        }.margin({ bottom: SPACE.md })
         Text('【题目】')
-          .fontSize(15)
+          .fontSize(FONT.body)
           .fontWeight(FontWeight.Medium)
-          .fontColor('#185FA5')
-          .margin({ bottom: 4 })
+          .fontColor($r('app.color.brand'))
+          .margin({ bottom: SPACE.xs })
         Text(this.question!.prompt)
-          .fontSize(14)
-          .fontColor('#2c2c2a')
+          .fontSize(FONT.bodySm)
+          .fontColor($r('app.color.text_body'))
           .lineHeight(22)
-          .margin({ bottom: 14 })
+          .margin({ bottom: SPACE.md })
         if (this.showAnswer) {
           Text('【参考答案 · 逐字稿】')
-            .fontSize(15)
+            .fontSize(FONT.body)
             .fontWeight(FontWeight.Medium)
-            .fontColor('#185FA5')
-            .margin({ bottom: 4 })
+            .fontColor($r('app.color.brand'))
+            .margin({ bottom: SPACE.xs })
           Text(this.question!.answerScript)
-            .fontSize(14)
-            .fontColor('#2c2c2a')
+            .fontSize(FONT.bodySm)
+            .fontColor($r('app.color.text_body'))
             .lineHeight(22)
         } else {
           Button('查看参考答案（逐字稿）')
             .onClick(() => { this.showAnswer = true; })
-            .backgroundColor('#185FA5')
-            .margin({ top: 6, bottom: 6 })
+            .backgroundColor($r('app.color.brand'))
+            .margin({ top: SPACE.xs, bottom: SPACE.xs })
           Text('🔒 先自测口述，再对照参考答案')
-            .fontSize(13)
-            .fontColor('#888')
-            .margin({ top: 4 })
+            .fontSize(FONT.bodySm)
+            .fontColor($r('app.color.text_secondary'))
+            .margin({ top: SPACE.xs })
         }
       }
       .width('92%')
@@ -133,16 +134,16 @@ struct Detail {
     Column() {
       Row() {
         Text('‹ 返回')
-          .fontSize(15)
-          .fontColor('#185FA5')
+          .fontSize(FONT.body)
+          .fontColor($r('app.color.brand'))
           .onClick(() => router.back())
         Text(this.fav ? '★ 已收藏' : '☆ 收藏')
-          .fontSize(14)
-          .fontColor(this.fav ? '#E0A458' : '#888')
+          .fontSize(FONT.bodySm)
+          .fontColor(this.fav ? $r('app.color.favorite') : $r('app.color.text_secondary'))
           .onClick(() => this.toggleFav())
       }
       .width('92%')
-      .margin({ top: 10, bottom: 8 })
+      .margin({ top: SPACE.md, bottom: SPACE.sm })
       .justifyContent(FlexAlign.SpaceBetween)
 
       if (this.article) {
@@ -151,13 +152,13 @@ struct Detail {
         this.questionView()
       } else {
         Text('加载中…')
-          .fontSize(14)
-          .fontColor('#888')
-          .margin(40)
+          .fontSize(FONT.bodySm)
+          .fontColor($r('app.color.text_secondary'))
+          .margin(SPACE.xl)
       }
     }
     .width('100%')
     .height('100%')
-    .backgroundColor('#F5F7FA')
+    .backgroundColor($r('app.color.background'))
   }
 }

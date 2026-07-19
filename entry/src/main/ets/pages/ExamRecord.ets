@@ -4,6 +4,7 @@ import { preferences } from '@kit.ArkData';
 import { DataStore } from '../model/DataStore';
 import { AppData, PracticeSession } from '../model/Types';
 import { BackHeader } from '../utils/BackHeader';
+import { RADIUS } from '../utils/Theme';
 
 const PREF_NAME: string = 'practice';
 
@@ -69,8 +70,8 @@ struct ExamRecord {
           })
           .layoutWeight(1)
           .height(40)
-          .backgroundColor('#FFFFFF')
-          .borderRadius(20)
+          .backgroundColor($r('app.color.surface'))
+          .borderRadius(RADIUS.pill)
           .padding({ left: 14 })
       }
       .width('92%')
@@ -79,12 +80,12 @@ struct ExamRecord {
       if (this.sessions.length === 0) {
         Text('还没有演练记录，去真题模考试试')
           .fontSize(14)
-          .fontColor('#888')
+          .fontColor($r('app.color.text_secondary'))
           .margin(40)
       } else if (this.filterSessions().length === 0) {
         Text(`没有匹配「${this.kw}」的套题`)
           .fontSize(14)
-          .fontColor('#888')
+          .fontColor($r('app.color.text_secondary'))
           .margin(40)
       } else {
         List() {
@@ -94,20 +95,20 @@ struct ExamRecord {
                 Text(s.setTitle)
                   .fontSize(14)
                   .fontWeight(FontWeight.Medium)
-                  .fontColor('#1f2d3d')
+                  .fontColor($r('app.color.text_primary'))
                 Text(`${s.date} · 用时 ${this.fmt(s.durationSec)} · 掌握${s.master}/模糊${s.vague}/不会${s.fail}`)
                   .fontSize(12)
-                  .fontColor('#888')
+                  .fontColor($r('app.color.text_secondary'))
                   .margin({ top: 3 })
               }
               .width('100%')
               .padding(12)
-              .backgroundColor('#FFFFFF')
-              .borderRadius(8)
+              .backgroundColor($r('app.color.surface'))
+              .borderRadius(RADIUS.sm)
               .margin({ bottom: 6 })
               .alignItems(HorizontalAlign.Start)
             }
-          }, (s: PracticeSession, i: number): string => s.setTitle + '_' + i)
+          }, (s: PracticeSession, i: number) => s.setTitle + '_' + i)
         }
         .width('92%')
         .layoutWeight(1)
@@ -115,6 +116,6 @@ struct ExamRecord {
     }
     .width('100%')
     .height('100%')
-    .backgroundColor('#F5F7FA')
+    .backgroundColor($r('app.color.background'))
   }
 }
