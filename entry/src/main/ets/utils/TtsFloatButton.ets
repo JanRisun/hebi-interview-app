@@ -16,17 +16,17 @@ enum FloatState {
 @Component
 export struct TtsFloatButton {
   // 全局 TTS 状态（AppStorage 双向绑定）
-  @StorageLink('ttsPlaying') playing: boolean = false;
+  @StorageLink('ttsPlaying') @Watch('onPlayingChange') playing: boolean = false;
   @StorageLink('ttsPaused') paused: boolean = false;
   @StorageLink('ttsText') activeText: string = '';
   @StorageLink('ttsSpeed') speed: number = 1.0;
 
   // 悬浮按钮自身状态
   @State floatState: FloatState = FloatState.Collapsed;
-  @State posX: number = 16;       // 按钮 X 坐标（默认左下角上方）
-  @State posY: number = 500;      // 按钮 Y 坐标（默认距顶）
-  @State dragX: number = 0;        // 拖拽偏移 X
-  @State dragY: number = 0;        // 拖拽偏移 Y
+  @State posX: number = 16;       // 按钮 X 坐标（默认左侧）
+  @State posY: number = 0;        // 按钮 Y 坐标（Stack BottomStart 原点即左下角）
+  @State dragX: number = 0;       // 拖拽偏移 X
+  @State dragY: number = 0;       // 拖拽偏移 Y
 
   // 尺寸常量
   private readonly BTN_SIZE: number = 48;
@@ -39,6 +39,17 @@ export struct TtsFloatButton {
     const savedY: number | undefined = AppStorage.get<number>('ttsFloatY');
     if (savedX !== undefined) this.posX = savedX;
     if (savedY !== undefined) this.posY = savedY;
+  }
+
+  // 监听播放状态变化：开始播报→自动展开迷你条；停止→自动收起
+  onPlayingChange(): void {
+    if (this.playing) {
+      // 开始播报：自动展开到迷你条
+      this.floatState = FloatState.Mini;
+    } else {
+      // 停止播报：自动收起
+      this.floatState = FloatState.Collapsed;
+    }
   }
 
   // 获取当前显示的标题文本（截断到指定长度）
@@ -120,19 +131,19 @@ export struct TtsFloatButton {
   }
 
   build() {
-    // 统一单根结构：Column 容器 + translate 定位
+    // 未播放时：不渲染悬浮按钮（点朗读后 @Watch 自动展开）
+    if (!this.playing) {
+      Column().width(0).height(0)
+      return;
+    }
+
+    // 播放中：根据 floatState 渲染对应形态
     Column() {
-      if (!this.playing && this.floatState === FloatState.Collapsed) {
-        // 未播放收起态：淡色小圆入口
-        this.buildCollapsedBtn(false)
-      } else if (this.floatState === FloatState.Collapsed) {
-        // 播放中收起态：品牌色小圆
+      if (this.floatState === FloatState.Collapsed) {
         this.buildCollapsedBtn(true)
       } else if (this.floatState === FloatState.Mini) {
-        // 迷你暂停条
         this.buildMiniBar()
       } else {
-        // 展开完整面板
         this.buildExpandedPanel()
       }
     }
