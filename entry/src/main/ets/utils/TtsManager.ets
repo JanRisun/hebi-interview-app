@@ -5,7 +5,7 @@
 import { textToSpeech } from '@kit.CoreSpeechKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 
-class TtsManager {
+class _TtsEngineImpl {
   private engine: textToSpeech.TextToSpeechEngine | null = null;
   private playing: boolean = false;
   private currentText: string = '';   // 过滤后文本（用于 toggle 同段判定）
@@ -138,4 +138,4 @@ class TtsManager {
   }
 }
 
-export const TtsManager = new TtsManager();
+export const TtsManager = new _TtsEngineImpl();
