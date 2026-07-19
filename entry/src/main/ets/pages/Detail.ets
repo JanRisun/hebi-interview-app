@@ -4,6 +4,7 @@ import { DataStore } from '../model/DataStore';
 import { Article, Question, Section } from '../model/Types';
 import { FavStore } from '../utils/FavStore';
 import { UserTagStore } from '../utils/UserTagStore';
+import { RecorderBar } from '../utils/RecorderBar';
 import { FONT, RADIUS, SPACE } from '../utils/Theme';
 
 // 预设快捷标记（点击切换：未加→添加，已加→移除）
@@ -247,6 +248,8 @@ struct Detail {
           .fontColor($r('app.color.text_body'))
           .lineHeight(22)
           .margin({ bottom: SPACE.md })
+        // 开口自测：录音 + 回放 + 计时（按当前题 id 存本机）
+        RecorderBar({ qid: this.itemId })
         if (this.showAnswer) {
           Text('【参考答案 · 逐字稿】')
             .fontSize(FONT.body)

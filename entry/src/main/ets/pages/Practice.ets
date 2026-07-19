@@ -7,6 +7,7 @@ import { DataStore } from '../model/DataStore';
 import { AppData, Question, MockSet, PracticeSession } from '../model/Types';
 import { preferences } from '@kit.ArkData';
 import { RADIUS } from '../utils/Theme';
+import { RecorderBar } from '../utils/RecorderBar';
 
 const PREF_NAME: string = 'practice';
 
@@ -408,6 +409,9 @@ export struct PracticeView {
                   .fontSize(16)
                   .fontColor($r('app.color.text_primary'))
                   .lineHeight(26)
+
+                // 开口自测：录音 + 回放 + 计时（按当前题 id 存本机）
+                RecorderBar({ qid: this.curId })
 
                 Text('我的作答要点（可选，仅存本机，复盘时对照）')
                   .fontSize(13)
