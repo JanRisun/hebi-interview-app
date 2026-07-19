@@ -207,11 +207,6 @@ export struct TtsFloatButton {
   // ====== 收起态小圆按钮 ======
   @Builder
   buildCollapsedBtn(active: boolean) {
-    // 预声明阴影样式（arkts strict 要求对象字面量对应显式声明的类型）
-    const sh: ShadowStyle = active
-      ? { radius: 8, color: '#30000000', offsetX: 0, offsetY: 2 }
-      : { radius: 4, color: '#15000000', offsetX: 0, offsetY: 1 };
-
     Column() {
       Text('🎧')
         .fontSize(22)
@@ -220,9 +215,16 @@ export struct TtsFloatButton {
     .height(this.BTN_SIZE)
     .borderRadius(this.BTN_SIZE / 2)
     .backgroundColor(active ? $r('app.color.brand') : $r('app.color.surface'))
-    .shadow(sh)
+    .shadow(this.collapsedShadow(active))
     .justifyContent(FlexAlign.Center)
     .onClick(() => this.onFloatTap())
+  }
+
+  // 收起态阴影（Builder 内不能声明 const，故抽为方法）
+  private collapsedShadow(active: boolean): ShadowStyle {
+    return active
+      ? { radius: 8, color: '#30000000', offsetX: 0, offsetY: 2 }
+      : { radius: 4, color: '#15000000', offsetX: 0, offsetY: 1 };
   }
 
   // ====== 迷你控制条 ======
