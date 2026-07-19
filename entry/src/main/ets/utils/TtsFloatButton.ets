@@ -2,10 +2,12 @@
 // 三态：收起（小圆可拖拽）→ 迷你（暂停条）→ 展开（完整控制栏）
 // 参考学习强国：常驻小圆 FAB（空闲也可见、可拖拽），播放时展开控制栏。
 // 支持自由拖拽，根据位置自动切换展开方向（靠左向右展，靠右向左展）
-// 定位方案：用 alignSelf(BottomStart) + translate() 偏移（避免 position()/markAnchor() 的 ArkTS 类型检查坑）
-//   坐标模型：Stack 默认 TopStart，FAB 自身 alignSelf(BottomStart) 锚定左下角；
-//   translate(x,y) 中 x 右为正、y 下为正；baseX=距左、baseY=距底（从底部向上的距离），
-//   拖拽直观且【无需读取屏幕高度】，避免 aboutToAppear 时 display 未就绪导致高度为 0 跑到顶部。
+// 定位方案：页面 Stack 用 alignContent: Alignment.BottomStart 把 FAB 锚定在左下角，
+//   FAB 自身只靠 translate() 做微调偏移（避免 position()/markAnchor() 的 ArkTS 类型坑；
+//   也避免 .alignSelf(Alignment) —— 它的形参类型是 ItemAlign，传 Alignment 会编译报错，见 commit 847a1b1）。
+//   坐标模型：translate(x,y) 中 x 右为正、y 下为正；baseX=距左、baseY=距底（从屏幕底部向上的距离）。
+//   因锚点已是 BottomStart，按钮默认就贴左下角，【无需在 aboutToAppear 读取屏幕高度】，
+//   从而规避了 display 未就绪时高度读到 0、按钮被顶到左上角的历史 bug（见 commit ea1da94）。
 import display from '@ohos.display';
 import { TtsManager, SPEED_LABELS } from './TtsManager';
 import { FONT, RADIUS, SPACE } from './Theme';
@@ -70,6 +72,8 @@ export struct TtsFloatButton {
       this.baseY = savedY;
     } else {
       // 默认锚定「左下角 + 规范偏移」：距左 LEFT_MARGIN，距底 BOTTOM_RESERVE（避开底部操作栏）
+      // 关键：默认落点只由 BottomStart 锚点 + 常量决定，此处【不读屏幕高度】，
+      // 因此即便 display 尚未就绪也不会错位（历史 bug 即源于此）。
       this.baseX = this.LEFT_MARGIN;
       this.baseY = this.BOTTOM_RESERVE;
     }
@@ -152,6 +156,8 @@ export struct TtsFloatButton {
   }
 
   // 获取屏幕逻辑尺寸（vp），避免把像素当 vp 用导致边界错乱
+  // 注意：此方法依赖窗口已就绪。aboutToAppear 阶段不调用它（避免读到 0），
+  // 仅在拖拽结束 clampPosition 里调用——此时窗口必然已就绪。
   private getScreenVp(): ScreenSize {
     try {
       const d = display.getDefaultDisplaySync();
@@ -208,6 +214,7 @@ export struct TtsFloatButton {
     .translate({ x: this.totalX, y: this.totalY })    // x 右正、y 下正（baseY 已取负）
     .gesture(
       PanGesture()
+        // event.offsetX/offsetY 单位为 vp，与 translate 的 x/y 一致，故拖拽 1:1 跟手，无需按 density 换算
         .onActionUpdate((event: GestureEvent) => {
           this.dragX = event.offsetX;
           this.dragY = event.offsetY;

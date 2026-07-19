@@ -48,6 +48,8 @@ export struct TtsButton {
     )
     .borderRadius(RADIUS.pill)
     .onClick(() => {
+      // toggle 作用在全局单例引擎上：无论哪个页面的按钮点击，都会同步驱动 AppStorage 状态，
+      // 因此本按钮与悬浮按钮、其他页面按钮的播放/暂停态始终一致。
       TtsManager.toggle(this.text);
     })
   }
