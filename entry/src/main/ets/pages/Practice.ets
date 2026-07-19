@@ -10,6 +10,7 @@ import { RADIUS } from '../utils/Theme';
 import { RecorderBar } from '../utils/RecorderBar';
 import { fileIo } from '@kit.CoreFileKit';
 import { vibrator } from '@kit.SensorServiceKit';
+import { hilog } from '@kit.PerformanceAnalysisKit';
 
 const PREF_NAME: string = 'practice';
 
@@ -158,13 +159,28 @@ export struct PracticeView {
     this.remain = (s && typeof s.totalThink === 'number' && s.totalThink > 0) ? s.totalThink : 30;
   }
 
-  // 提示音：用振动反馈（无需音频资源，跨版本稳定）。start=短振(开始作答)，timeout=长振(时间到)
+  // 时间节点提示：用振动（马达）提醒考生 —— 思考结束切作答、作答超时
+  // 关键修复：
+  //  1) usage 必须用 'alarm'（受系统「声音模式」管控：振动/响铃模式即振）；
+  //     不能再用 'unknown'/'touch'（受「系统触感反馈」开关管控，该开关默认常关→不振动）。
+  //  2) 必须在 module.json5 声明 ohos.permission.VIBRATE 权限，否则调用被系统拒绝（且原代码被 catch 吞掉不报）。
+  //  3) 模拟器无物理马达，必须在真机验证。
   private beep(kind: 'start' | 'timeout'): void {
     try {
-      const dur: number = kind === 'timeout' ? 500 : 200;
-      vibrator.startVibration({ type: 'time', duration: dur }, { id: 1, usage: 'unknown' })
-        .then(() => {}).catch(() => {});
-    } catch (e) { /* ignore */ }
+      const dur: number = kind === 'start' ? 300 : 700;
+      vibrator.startVibration(
+        { type: 'time', duration: dur },
+        { id: 1, usage: 'alarm' }
+      )
+        .then(() => {
+          hilog.info(0x1000, 'Practice', '计时振动成功 kind=%{public}s', kind);
+        })
+        .catch((err: Object) => {
+          hilog.error(0x1000, 'Practice', '计时振动失败 kind=%{public}s err=%{public}s', kind, JSON.stringify(err));
+        });
+    } catch (e: Object) {
+      hilog.error(0x1000, 'Practice', '计时振动异常 %{public}s', JSON.stringify(e));
+    }
   }
 
   startSet(s: MockSet): void {
