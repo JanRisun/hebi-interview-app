@@ -2,6 +2,7 @@
 // 通过 AppStorage 全局同步播放态：多个按钮共享同一个 TTS 引擎，
 // 任意按钮点击都会正确反映「正在播放/暂停」状态。
 // V2：支持暂停/继续状态区分（与悬浮按钮联动）
+// 说明：用 Row + Text 自定义药丸按钮，避免 Button(text) 在部分场景下塌成圆块无字。
 import { TtsManager } from './TtsManager';
 import { FONT, RADIUS, SPACE } from './Theme';
 
@@ -9,7 +10,7 @@ import { FONT, RADIUS, SPACE } from './Theme';
 export struct TtsButton {
   @Prop text: string = '';                       // 要朗读的内容
   @Prop label: string = '🔊 朗读';                // 未播放时的按钮文案
-  @StorageLink('ttsPlaying') playing: boolean = false;   // 全局播放态（引擎活跃）
+  @StorageLink('ttsPlaying') playing: boolean = false;   // 全局播放态（会话进行中，含暂停）
   @StorageLink('ttsPaused') paused: boolean = false;     // 全局暂停态
   @StorageLink('ttsText') activeText: string = '';       // 当前正在朗读的文本
 
@@ -30,10 +31,13 @@ export struct TtsButton {
   }
 
   build() {
-    Button() {
+    // 用 Row + Text 自定义药丸按钮，保证始终可见、有文字
+    Row() {
       Text(this.btnLabel)
         .fontSize(FONT.bodySm)
         .fontColor($r('app.color.on_primary'))
+        .maxLines(1)
+        .textOverflow({ overflow: TextOverflow.Ellipsis })
     }
     .height(36)
     .padding({ left: SPACE.md, right: SPACE.md })
@@ -43,7 +47,6 @@ export struct TtsButton {
         : $r('app.color.brand')
     )
     .borderRadius(RADIUS.pill)
-    .enabled(this.text.trim().length > 0)
     .onClick(() => {
       TtsManager.toggle(this.text);
     })

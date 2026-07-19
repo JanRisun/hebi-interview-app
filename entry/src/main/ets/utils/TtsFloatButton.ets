@@ -1,7 +1,10 @@
 // TTS 悬浮播控按钮（参考学习强国）
 // 三态：收起（小圆可拖拽）→ 迷你（暂停条）→ 展开（完整控制栏）
+// 参考学习强国：常驻小圆 FAB（空闲也可见、可拖拽），播放时展开控制栏。
 // 支持自由拖拽，根据位置自动切换展开方向（靠左向右展，靠右向左展）
 // 定位方案：用 translate() 偏移（避免 position()/markAnchor() 的 ArkTS 类型检查坑）
+//   坐标模型：Stack 用 Alignment.TopStart，translate(x,y) 中 x/y 均为 vp（下/右为正），
+//   故默认位置为「距顶 posY、距左 posX」，拖拽直观。
 import display from '@ohos.display';
 import { TtsManager, SPEED_LABELS } from './TtsManager';
 import { FONT, RADIUS, SPACE } from './Theme';
@@ -16,17 +19,17 @@ enum FloatState {
 @Component
 export struct TtsFloatButton {
   // 全局 TTS 状态（AppStorage 双向绑定）
-  @StorageLink('ttsPlaying') @Watch('onPlayingChange') playing: boolean = false;
-  @StorageLink('ttsPaused') paused: boolean = false;
-  @StorageLink('ttsText') activeText: string = '';
+  @StorageLink('ttsPlaying') @Watch('onPlayingChange') playing: boolean = false;   // 会话进行中（含暂停）——驱动可见性
+  @StorageLink('ttsPaused') paused: boolean = false;     // 全局暂停态
+  @StorageLink('ttsText') activeText: string = '';      // 当前正在朗读的文本
   @StorageLink('ttsSpeed') speed: number = 1.0;
 
   // 悬浮按钮自身状态
   @State floatState: FloatState = FloatState.Collapsed;
-  @State posX: number = 16;       // 按钮 X 坐标（默认左侧）
-  @State posY: number = 0;        // 按钮 Y 坐标（Stack BottomStart 原点即左下角）
-  @State dragX: number = 0;       // 拖拽偏移 X
-  @State dragY: number = 0;       // 拖拽偏移 Y
+  @State posX: number = 16;       // 距左距离（vp）
+  @State posY: number = 600;      // 距顶距离（vp）
+  @State dragX: number = 0;       // 拖拽偏移 X（vp，累计）
+  @State dragY: number = 0;       // 拖拽偏移 Y（vp，累计）
 
   // 尺寸常量
   private readonly BTN_SIZE: number = 48;
@@ -37,22 +40,29 @@ export struct TtsFloatButton {
   aboutToAppear(): void {
     const savedX: number | undefined = AppStorage.get<number>('ttsFloatX');
     const savedY: number | undefined = AppStorage.get<number>('ttsFloatY');
-    if (savedX !== undefined) this.posX = savedX;
-    if (savedY !== undefined) this.posY = savedY;
+    if (savedX !== undefined && savedY !== undefined) {
+      this.posX = savedX;
+      this.posY = savedY;
+    } else {
+      // 默认放在左下区域（距顶 = 屏高 - 200）
+      const s = this.getScreenVp();
+      this.posX = 16;
+      this.posY = Math.max(0, s.h - 200);
+    }
   }
 
-  // 监听播放状态变化：开始播报→自动展开迷你条；停止→自动收起
+  // 监听播放状态变化：开始播报→自动展开迷你条；会话结束→收起（空闲常驻小圆）
   onPlayingChange(): void {
     if (this.playing) {
       // 开始播报：自动展开到迷你条
       this.floatState = FloatState.Mini;
     } else {
-      // 停止播报：自动收起
+      // 会话结束：收起为常驻小圆
       this.floatState = FloatState.Collapsed;
     }
   }
 
-  // 获取当前显示的标题文本（截断到指定长度）
+  // 当前显示的标题文本（截断到指定长度）
   private get displayTitle(): string {
     if (!this.activeText) return '语音播报';
     return this.activeText.length > 30 ? this.activeText.slice(0, 30) + '…' : this.activeText;
@@ -74,9 +84,15 @@ export struct TtsFloatButton {
     return this.posY + this.dragY;
   }
 
-  // 点击切换状态
+  // 点击切换状态（播放态下）
   private onFloatTap(): void {
-    if (!this.playing) return;
+    if (!this.playing) {
+      // 空闲态：尝试重播上一段（若无则无操作）
+      if (TtsManager.hasLast) {
+        TtsManager.replayLast();
+      }
+      return;
+    }
     if (this.floatState === FloatState.Collapsed) {
       this.floatState = FloatState.Mini;
     } else if (this.floatState === FloatState.Mini) {
@@ -109,17 +125,29 @@ export struct TtsFloatButton {
     AppStorage.setOrCreate('ttsFloatY', this.totalY);
   }
 
-  // 拖拽结束：归位+边界clamp
+  // 获取屏幕逻辑尺寸（vp），避免把像素当 vp 用导致边界错乱
+  private getScreenVp(): { w: number; h: number } {
+    try {
+      const d = display.getDefaultDisplaySync();
+      const scale: number = d.densityPixels > 0 ? d.densityPixels : 1;
+      return { w: d.width / scale, h: d.height / scale };
+    } catch (e) {
+      return { w: 360, h: 720 };
+    }
+  }
+
+  // 拖拽结束：归位+边界clamp（vp 单位）
   private clampPosition(): void {
     this.posX += this.dragX;
     this.posY += this.dragY;
     this.dragX = 0;
     this.dragY = 0;
-    const dw: number = display.getDefaultDisplaySync().width;
-    const dh: number = display.getDefaultDisplaySync().height;
+    const scr = this.getScreenVp();
     const panelW: number = this.getPanelWidth();
-    this.posX = Math.max(0, Math.min(this.posX, dw - panelW));
-    this.posY = Math.max(0, Math.min(this.posY, dh - this.PANEL_HEIGHT - 140));
+    // 水平：0 ~ 屏宽-面板宽
+    this.posX = Math.max(0, Math.min(this.posX, scr.w - panelW));
+    // 垂直：0 ~ 屏高-面板高-底部预留
+    this.posY = Math.max(0, Math.min(this.posY, scr.h - this.PANEL_HEIGHT - 120));
     this.savePosition();
   }
 
@@ -131,12 +159,13 @@ export struct TtsFloatButton {
   }
 
   build() {
-    // ArkTS build() 禁止 return，必须单根容器 + if/else 分支
+    // 始终渲染（空闲也常驻小圆，可拖拽），单根 Column + if/else 分支
     Column() {
-      if (!this.playing) {
-        // 未播放：空占位（@Watch 会在 playing 变 true 时触发重新渲染）
-        Column().width(0).height(0)
+      if (!this.playing && this.floatState === FloatState.Collapsed) {
+        // 空闲常驻：淡色小圆（可拖拽，点按重播上一段）
+        this.buildCollapsedBtn(false)
       } else if (this.floatState === FloatState.Collapsed) {
+        // 播放中收起：品牌色小圆
         this.buildCollapsedBtn(true)
       } else if (this.floatState === FloatState.Mini) {
         this.buildMiniBar()
@@ -144,8 +173,8 @@ export struct TtsFloatButton {
         this.buildExpandedPanel()
       }
     }
-    .width(this.playing ? this.getPanelWidth() : 0)
-    .height(this.playing ? this.PANEL_HEIGHT : 0)
+    .width(this.getPanelWidth())
+    .height(this.floatState === FloatState.Collapsed ? this.BTN_SIZE : this.PANEL_HEIGHT)
     .translate({ x: this.totalX, y: this.totalY })
     .gesture(
       PanGesture()

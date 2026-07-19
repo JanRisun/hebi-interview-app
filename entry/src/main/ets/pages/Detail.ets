@@ -295,7 +295,8 @@ struct Detail {
   }
 
   build() {
-    Stack({ alignContent: Alignment.BottomStart }) {
+    // 用 TopStart 对齐：translate(x,y) 中 x/y 均为 vp（右/下为正），坐标直观、拖拽自然
+    Stack({ alignContent: Alignment.TopStart }) {
       // 底层：页面内容
       Column() {
         Row() {
