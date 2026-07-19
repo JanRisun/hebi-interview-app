@@ -46,7 +46,23 @@ struct Detail {
         Text(this.article!.category)
           .fontSize(FONT.caption)
           .fontColor($r('app.color.text_secondary'))
+          .margin({ bottom: SPACE.xs })
+        // 标签行：全部展示，自动换行
+        if (this.article!.tags !== undefined && this.article!.tags.length > 0) {
+          Flex({ wrap: FlexWrap.Wrap }) {
+            ForEach(this.article!.tags, (t: string) => {
+              Text(t)
+                .fontSize(FONT.caption)
+                .fontColor($r('app.color.brand'))
+                .backgroundColor($r('app.color.tag_bg'))
+                .borderRadius(RADIUS.sm)
+                .padding({ left: SPACE.sm, right: SPACE.sm, top: SPACE.xs, bottom: SPACE.xs })
+                .margin({ top: SPACE.xs, right: SPACE.xs })
+            }, (t: string) => t)
+          }
+          .width('100%')
           .margin({ bottom: SPACE.md })
+        }
         ForEach(this.article!.sections, (s: Section) => {
           Column() {
             if (s.heading) {
@@ -91,7 +107,23 @@ struct Detail {
             .fontSize(FONT.caption)
             .fontColor($r('app.color.text_secondary'))
             .margin({ left: SPACE.sm })
-        }.margin({ bottom: SPACE.md })
+        }.margin({ bottom: SPACE.xs })
+        // 真题标签行：全部展示，自动换行
+        if (this.question!.tags !== undefined && this.question!.tags.length > 0) {
+          Flex({ wrap: FlexWrap.Wrap }) {
+            ForEach(this.question!.tags, (t: string) => {
+              Text(t)
+                .fontSize(FONT.caption)
+                .fontColor($r('app.color.brand'))
+                .backgroundColor($r('app.color.tag_bg'))
+                .borderRadius(RADIUS.sm)
+                .padding({ left: SPACE.sm, right: SPACE.sm, top: SPACE.xs, bottom: SPACE.xs })
+                .margin({ top: SPACE.xs, right: SPACE.xs })
+            }, (t: string) => t)
+          }
+          .width('100%')
+          .margin({ bottom: SPACE.md })
+        }
         Text('【题目】')
           .fontSize(FONT.body)
           .fontWeight(FontWeight.Medium)

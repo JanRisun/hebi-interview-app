@@ -35,7 +35,8 @@ export struct CategoryView {
       .padding({ top: SPACE.md, bottom: SPACE.sm })
   }
 
-  @Builder rowItem(title: string, sub: string) {
+  // 列表行：标题 + 副标题 + 标签 chips（最多 3 个，超出显示 +N）
+  @Builder rowItem(title: string, sub: string, tags?: string[]) {
     Row() {
       Column() {
         Text(title)
@@ -47,6 +48,27 @@ export struct CategoryView {
           .fontSize(FONT.caption)
           .fontColor($r('app.color.text_secondary'))
           .margin({ top: SPACE.xs })
+        // 标签行：自动换行，最多展示前 3 个
+        if (tags !== undefined && tags.length > 0) {
+          Flex({ wrap: FlexWrap.Wrap }) {
+            ForEach(tags.slice(0, 3), (t: string) => {
+              Text(t)
+                .fontSize(FONT.mini)
+                .fontColor($r('app.color.brand'))
+                .backgroundColor($r('app.color.tag_bg'))
+                .borderRadius(RADIUS.sm)
+                .padding({ left: SPACE.sm, right: SPACE.sm, top: SPACE.xs, bottom: SPACE.xs })
+                .margin({ top: SPACE.xs, right: SPACE.xs })
+            }, (t: string) => t)
+            if (tags.length > 3) {
+              Text('+' + (tags.length - 3))
+                .fontSize(FONT.mini)
+                .fontColor($r('app.color.text_tertiary'))
+                .margin({ top: SPACE.xs })
+            }
+          }
+          .width('100%')
+        }
       }
       .layoutWeight(1)
       .alignItems(HorizontalAlign.Start)
@@ -67,7 +89,7 @@ export struct CategoryView {
         ListItemGroup({ header: this.groupHeader(cat) }) {
           ForEach(this.data!.articles.filter((a) => a.category === cat), (a: Article) => {
             ListItem() {
-              this.rowItem(a.title, '知识点')
+              this.rowItem(a.title, '知识点', a.tags)
             }
             .onClick(() => router.pushUrl({ url: 'pages/Detail', params: { id: a.id, kind: 'article' } }))
           }, (a: Article) => a.id)
@@ -82,7 +104,7 @@ export struct CategoryView {
     List() {
       ForEach(this.data!.questions, (q: Question) => {
         ListItem() {
-          this.rowItem(q.title, q.source)
+          this.rowItem(q.title, q.source, q.tags)
         }
         .onClick(() => router.pushUrl({ url: 'pages/Detail', params: { id: q.id, kind: 'question' } }))
       }, (q: Question) => q.id)
