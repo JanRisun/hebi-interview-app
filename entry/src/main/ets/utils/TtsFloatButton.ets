@@ -131,15 +131,12 @@ export struct TtsFloatButton {
   }
 
   build() {
-    // 未播放时：不渲染悬浮按钮（点朗读后 @Watch 自动展开）
-    if (!this.playing) {
-      Column().width(0).height(0)
-      return;
-    }
-
-    // 播放中：根据 floatState 渲染对应形态
+    // ArkTS build() 禁止 return，必须单根容器 + if/else 分支
     Column() {
-      if (this.floatState === FloatState.Collapsed) {
+      if (!this.playing) {
+        // 未播放：空占位（@Watch 会在 playing 变 true 时触发重新渲染）
+        Column().width(0).height(0)
+      } else if (this.floatState === FloatState.Collapsed) {
         this.buildCollapsedBtn(true)
       } else if (this.floatState === FloatState.Mini) {
         this.buildMiniBar()
@@ -147,8 +144,8 @@ export struct TtsFloatButton {
         this.buildExpandedPanel()
       }
     }
-    .width(this.getPanelWidth())
-    .height(this.PANEL_HEIGHT)
+    .width(this.playing ? this.getPanelWidth() : 0)
+    .height(this.playing ? this.PANEL_HEIGHT : 0)
     .translate({ x: this.totalX, y: this.totalY })
     .gesture(
       PanGesture()
