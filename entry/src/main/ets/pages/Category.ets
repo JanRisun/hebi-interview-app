@@ -6,6 +6,12 @@ import { AppData, Article, Question } from '../model/Types';
 import { UserTagStore } from '../utils/UserTagStore';
 import { FONT, RADIUS, SPACE } from '../utils/Theme';
 
+// 预缓存分组项接口（ArkTS strict 禁止对象字面量作类型声明，必须用 interface）
+interface ArticleGroup {
+  cat: string;
+  items: Article[];
+}
+
 @Component
 export struct CategoryView {
   @State data: AppData | null = null;
@@ -15,7 +21,7 @@ export struct CategoryView {
   @State userTagPool: string[] = [];                   // 全部用户标签（用于筛选条）
   @State userTagMap: Record<string, string[]> = {};    // 内容id→用户标签（用于命中判断）
   // 预缓存：数据加载/标签切换时算一次，build 内不再实时 filter（避免每次重渲全量重算）
-  @State grouped: { cat: string, items: Article[] }[] = [];   // 按分类分组（未筛选态用）
+  @State grouped: ArticleGroup[] = [];                        // 按分类分组（未筛选态用）
   @State filteredArticles: Article[] = [];                       // 当前标签命中的文章（筛选态用）
   @State filteredQuestions: Question[] = [];                     // 当前标签命中的题目
 
@@ -33,7 +39,7 @@ export struct CategoryView {
   private recompute(): void {
     const d: AppData | null = this.data;
     if (!d) return;
-    const g: { cat: string, items: Article[] }[] = [];
+    const g: ArticleGroup[] = [];
     for (let i: number = 0; i < d.tags.categories.length; i++) {
       const cat: string = d.tags.categories[i];
       g.push({ cat: cat, items: d.articles.filter((a: Article): boolean => a.category === cat) });
@@ -132,7 +138,7 @@ export struct CategoryView {
       List() {
         if (this.filterTag === '') {
           // 未筛选：按分类分组（读预缓存 grouped）
-          ForEach(this.grouped, (g: { cat: string, items: Article[] }) => {
+          ForEach(this.grouped, (g: ArticleGroup) => {
             ListItemGroup({ header: this.groupHeader(g.cat) }) {
               ForEach(g.items, (a: Article) => {
                 ListItem() {
@@ -141,7 +147,7 @@ export struct CategoryView {
                 .onClick(() => router.pushUrl({ url: 'pages/Detail', params: { id: a.id, kind: 'article' } }))
               }, (a: Article) => a.id)
             }
-          }, (g: { cat: string, items: Article[] }) => g.cat)
+          }, (g: ArticleGroup) => g.cat)
         } else {
           // 筛选态：平铺命中项（读预缓存 filteredArticles）
           ForEach(this.filteredArticles, (a: Article) => {
