@@ -8,6 +8,7 @@ import { AppData, Question, MockSet, PracticeSession } from '../model/Types';
 import { preferences } from '@kit.ArkData';
 import { RADIUS } from '../utils/Theme';
 import { RecorderBar } from '../utils/RecorderBar';
+import { fileIo } from '@kit.CoreFileKit';
 
 const PREF_NAME: string = 'practice';
 
@@ -90,6 +91,16 @@ export struct PracticeView {
     if (this.timer !== 0) {
       clearInterval(this.timer);
       this.timer = 0;
+    }
+  }
+
+  // 读该题的本地语音识别转写（RecorderBar 存的 rec_<id>.txt）
+  private asrOf(id: string): string {
+    try {
+      const ctx = getContext(this) as common.UIAbilityContext;
+      return fileIo.readTextSync(ctx.filesDir + '/rec_' + id + '.txt');
+    } catch (e) {
+      return '';
     }
   }
 
@@ -492,6 +503,19 @@ export struct PracticeView {
                       .fontColor($r('app.color.warning'))
                       .margin({ bottom: 2 })
                     Text(this.notes[q.id])
+                      .fontSize(13)
+                      .fontColor($r('app.color.text_body'))
+                      .lineHeight(20)
+                      .margin({ bottom: 8 })
+                  }
+
+                  // 本地语音识别转写：考生口述作答的文字版，对照逐字稿找差距
+                  if (this.asrOf(q.id)) {
+                    Text('我的口述转写（本地语音识别）')
+                      .fontSize(13)
+                      .fontColor($r('app.color.brand'))
+                      .margin({ bottom: 2 })
+                    Text(this.asrOf(q.id))
                       .fontSize(13)
                       .fontColor($r('app.color.text_body'))
                       .lineHeight(20)

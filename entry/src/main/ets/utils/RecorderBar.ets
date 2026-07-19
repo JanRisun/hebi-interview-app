@@ -9,6 +9,7 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import abilityAccessCtrl from '@ohos.abilityAccessCtrl';
 import bundleManager from '@ohos.bundle.bundleManager';
 import { FONT, RADIUS, SPACE } from '../utils/Theme';
+import { AsrHelper } from '../utils/AsrHelper';
 
 const DOMAIN: number = 0x0001;
 const TAG: string = 'RecorderBar';
@@ -21,6 +22,9 @@ export struct RecorderBar {
   @State playing: boolean = false;     // 是否正在回放
   @State sec: number = 0;            // 计时（秒）
   @State hasFile: boolean = false;    // 该题目是否已有历史录音
+  @State transcribing: boolean = false;   // 是否正在本地转写
+  @State hasTranscript: boolean = false; // 该题目是否已有转写文本
+  @State transcriptText: string = '';    // 转写结果（端侧语音识别）
 
   private avRecorder: media.AVRecorder | undefined = undefined;
   private avPlayer: media.AVPlayer | undefined = undefined;
@@ -28,10 +32,16 @@ export struct RecorderBar {
   private playFile: fileIo.File | undefined = undefined;
   private timer: number = 0;
 
-  // 录音文件路径：应用沙箱 filesDir/rec_<qid>.m4a
+  // 录音文件路径：应用沙箱 filesDir/rec_<qid>.wav（PCM/WAV，供 ASR 文件转写直接食用）
   private filePath(): string {
     const ctx = getContext(this) as common.UIAbilityContext;
-    return ctx.filesDir + '/rec_' + this.qid + '.m4a';
+    return ctx.filesDir + '/rec_' + this.qid + '.wav';
+  }
+
+  // 转写文本路径：与录音同名的 .txt
+  private transcriptPath(): string {
+    const ctx = getContext(this) as common.UIAbilityContext;
+    return ctx.filesDir + '/rec_' + this.qid + '.txt';
   }
 
   aboutToAppear(): void {
@@ -45,6 +55,47 @@ export struct RecorderBar {
   // 题目切换：复位录音/回放状态，刷新是否有历史录音
   private onQidChange(): void {
     this.forceStop();
+    this.transcriptText = '';
+    this.hasTranscript = false;
+    this.loadTranscript();
+  }
+
+  // 读回该题目历史转写文本（本机 txt）
+  private loadTranscript(): void {
+    try {
+      const txt: string = fileIo.readTextSync(this.transcriptPath());
+      this.transcriptText = txt;
+      this.hasTranscript = txt.length > 0;
+    } catch (e) {
+      this.transcriptText = '';
+      this.hasTranscript = false;
+    }
+  }
+
+  // 端侧转写：调 AsrHelper 把录音文件转成文字，存本机并展示
+  private async doTranscribe(): Promise<void> {
+    if (this.transcribing) return;
+    this.transcribing = true;
+    try {
+      const text: string = await AsrHelper.transcribeFile(this.filePath());
+      this.transcriptText = text;
+      this.hasTranscript = text.length > 0;
+      if (text.length > 0) {
+        try {
+          const fd = fileIo.openSync(
+            this.transcriptPath(),
+            fileIo.OpenMode.READ_WRITE | fileIo.OpenMode.CREATE | fileIo.OpenMode.TRUNC
+          );
+          fileIo.writeSync(fd.fd, text);
+          fileIo.closeSync(fd.fd);
+        } catch (e) { /* ignore */ }
+      }
+    } catch (e) {
+      const err = e as BusinessError;
+      hilog.error(DOMAIN, TAG, 'transcribe fail: %{public}s', err.message);
+    } finally {
+      this.transcribing = false;
+    }
   }
 
   // 检查麦克风权限（失败不致命，默认显示授权按钮）
@@ -59,6 +110,7 @@ export struct RecorderBar {
       this.permOk = (status === abilityAccessCtrl.GrantStatus.PERMISSION_GRANTED);
       if (this.permOk) {
         this.hasFile = this.fileExists();
+        this.loadTranscript();
       }
     } catch (e) {
       hilog.error(DOMAIN, TAG, 'checkPerm fail: %{public}s', JSON.stringify(e));
@@ -115,13 +167,13 @@ export struct RecorderBar {
       this.avRecorder.on('error', (err: BusinessError): void => {
         hilog.error(DOMAIN, TAG, 'rec error: %{public}s', err.message);
       });
+      // 录音格式改 PCM/WAV：ASR 文件转写要求 16k/单声道/16bit 裸 PCM（WAV 封装，去 44 字节头即可喂）
       const avProfile: media.AVRecorderProfile = {
-        audioBitrate: 112000,
-        audioChannels: 2,
-        audioCodec: media.CodecMimeType.AUDIO_AAC,
-        aacProfile: media.AacProfile.AAC_HE,
-        audioSampleRate: 48000,
-        fileFormat: media.ContainerFormatType.CFT_MPEG_4A,
+        audioBitrate: 256000,           // 16bit * 16000 * 1 = 256000 bps
+        audioChannels: 1,
+        audioCodec: media.CodecMimeType.AUDIO_PCM,
+        audioSampleRate: 16000,
+        fileFormat: media.ContainerFormatType.CFT_WAV,
       };
       const file = fileIo.openSync(
         this.filePath(),
@@ -289,6 +341,16 @@ export struct RecorderBar {
               .fontColor(this.playing ? $r('app.color.on_primary') : $r('app.color.text_primary'))
               .borderRadius(RADIUS.pill)
               .onClick(() => this.play())
+            // 本地语音识别转写（端侧、零密钥、隐私不出本机）
+            Button(this.transcribing ? '转写中…' : '转写为文字')
+              .layoutWeight(1)
+              .height(40)
+              .fontSize(14)
+              .backgroundColor($r('app.color.brand'))
+              .fontColor($r('app.color.on_primary'))
+              .borderRadius(RADIUS.pill)
+              .enabled(!this.transcribing)
+              .onClick(() => this.doTranscribe())
           }
         }
         .width('100%')
@@ -301,6 +363,19 @@ export struct RecorderBar {
           .fontColor($r('app.color.text_secondary'))
           .alignSelf(ItemAlign.Start)
           .margin({ top: SPACE.xs })
+        if (this.hasTranscript) {
+          Text('我的口述转写（本地语音识别，对照逐字稿找差距）')
+            .fontSize(FONT.caption)
+            .fontColor($r('app.color.brand'))
+            .alignSelf(ItemAlign.Start)
+            .margin({ top: SPACE.xs })
+          Text(this.transcriptText)
+            .fontSize(FONT.body)
+            .fontColor($r('app.color.text_body'))
+            .lineHeight(22)
+            .alignSelf(ItemAlign.Start)
+            .margin({ top: SPACE.xs })
+        }
         if (!this.hasFile && !this.recording && !this.playing) {
           Text('点「开始录音」口述作答，复盘时可回放对照参考答案')
             .fontSize(FONT.caption)
