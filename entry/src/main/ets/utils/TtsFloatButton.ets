@@ -16,6 +16,20 @@ enum FloatState {
   Expanded = 2     // 展开：完整控制面板
 }
 
+// 屏幕尺寸（vp 单位）
+interface ScreenSize {
+  w: number;
+  h: number;
+}
+
+// 阴影样式（避免 arkts-no-untyped-obj-literals）
+interface ShadowStyle {
+  radius: number;
+  color: ResourceColor;
+  offsetX: number;
+  offsetY: number;
+}
+
 @Component
 export struct TtsFloatButton {
   // 全局 TTS 状态（AppStorage 双向绑定）
@@ -126,13 +140,15 @@ export struct TtsFloatButton {
   }
 
   // 获取屏幕逻辑尺寸（vp），避免把像素当 vp 用导致边界错乱
-  private getScreenVp(): { w: number; h: number } {
+  private getScreenVp(): ScreenSize {
     try {
       const d = display.getDefaultDisplaySync();
       const scale: number = d.densityPixels > 0 ? d.densityPixels : 1;
-      return { w: d.width / scale, h: d.height / scale };
+      const result: ScreenSize = { w: d.width / scale, h: d.height / scale };
+      return result;
     } catch (e) {
-      return { w: 360, h: 720 };
+      const fallback: ScreenSize = { w: 360, h: 720 };
+      return fallback;
     }
   }
 
@@ -191,6 +207,11 @@ export struct TtsFloatButton {
   // ====== 收起态小圆按钮 ======
   @Builder
   buildCollapsedBtn(active: boolean) {
+    // 预声明阴影样式（arkts strict 要求对象字面量对应显式声明的类型）
+    const sh: ShadowStyle = active
+      ? { radius: 8, color: '#30000000', offsetX: 0, offsetY: 2 }
+      : { radius: 4, color: '#15000000', offsetX: 0, offsetY: 1 };
+
     Column() {
       Text('🎧')
         .fontSize(22)
@@ -199,8 +220,7 @@ export struct TtsFloatButton {
     .height(this.BTN_SIZE)
     .borderRadius(this.BTN_SIZE / 2)
     .backgroundColor(active ? $r('app.color.brand') : $r('app.color.surface'))
-    .shadow(active ? { radius: 8, color: '#30000000', offsetX: 0, offsetY: 2 } :
-                        { radius: 4, color: '#15000000', offsetX: 0, offsetY: 1 })
+    .shadow(sh)
     .justifyContent(FlexAlign.Center)
     .onClick(() => this.onFloatTap())
   }
@@ -245,7 +265,12 @@ export struct TtsFloatButton {
     .padding({ left: SPACE.sm, right: SPACE.xs })
     .backgroundColor($r('app.color.surface'))
     .borderRadius(RADIUS.lg)
-    .shadow({ radius: 12, color: '#25000000', offsetX: 0, offsetY: 4 })
+    .shadow(this.miniShadow)
+  }
+
+  // 迷你条阴影样式
+  private get miniShadow(): ShadowStyle {
+    return { radius: 12, color: '#25000000', offsetX: 0, offsetY: 4 };
   }
 
   // ====== 展开完整控制面板 ======
@@ -334,6 +359,11 @@ export struct TtsFloatButton {
     .padding({ top: SPACE.sm, bottom: SPACE.sm, left: SPACE.md, right: SPACE.md })
     .backgroundColor($r('app.color.surface'))
     .borderRadius(RADIUS.lg)
-    .shadow({ radius: 16, color: '#30000000', offsetX: 0, offsetY: 6 })
+    .shadow(this.expandedShadow)
+  }
+
+  // 展开面板阴影样式
+  private get expandedShadow(): ShadowStyle {
+    return { radius: 16, color: '#30000000', offsetX: 0, offsetY: 6 };
   }
 }
