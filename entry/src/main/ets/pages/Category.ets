@@ -122,45 +122,60 @@ export struct CategoryView {
   }
 
   @Builder articleList() {
-    List() {
-      if (this.filterTag === '') {
-        // 未筛选：按分类分组（读预缓存 grouped）
-        ForEach(this.grouped, (g: { cat: string, items: Article[] }) => {
-          ListItemGroup({ header: this.groupHeader(g.cat) }) {
-            ForEach(g.items, (a: Article) => {
-              ListItem() {
-                this.rowItem(a.title, '知识点', a.tags)
-              }
-              .onClick(() => router.pushUrl({ url: 'pages/Detail', params: { id: a.id, kind: 'article' } }))
-            }, (a: Article) => a.id)
-          }
-        }, (g: { cat: string, items: Article[] }) => g.cat)
-      } else {
-        // 筛选态：平铺命中项（读预缓存 filteredArticles）
-        ForEach(this.filteredArticles, (a: Article) => {
-          ListItem() {
-            this.rowItem(a.title, a.category, a.tags)
-          }
-          .onClick(() => router.pushUrl({ url: 'pages/Detail', params: { id: a.id, kind: 'article' } }))
-        }, (a: Article) => a.id)
+    if (this.filterTag !== '' && this.filteredArticles.length === 0) {
+      // 筛选态无结果：空态提示
+      Text(`没有命中「${this.filterTag}」的知识点`)
+        .fontSize(FONT.bodySm)
+        .fontColor($r('app.color.text_secondary'))
+        .margin({ top: SPACE.xl })
+    } else {
+      List() {
+        if (this.filterTag === '') {
+          // 未筛选：按分类分组（读预缓存 grouped）
+          ForEach(this.grouped, (g: { cat: string, items: Article[] }) => {
+            ListItemGroup({ header: this.groupHeader(g.cat) }) {
+              ForEach(g.items, (a: Article) => {
+                ListItem() {
+                  this.rowItem(a.title, '知识点', a.tags)
+                }
+                .onClick(() => router.pushUrl({ url: 'pages/Detail', params: { id: a.id, kind: 'article' } }))
+              }, (a: Article) => a.id)
+            }
+          }, (g: { cat: string, items: Article[] }) => g.cat)
+        } else {
+          // 筛选态：平铺命中项（读预缓存 filteredArticles）
+          ForEach(this.filteredArticles, (a: Article) => {
+            ListItem() {
+              this.rowItem(a.title, a.category, a.tags)
+            }
+            .onClick(() => router.pushUrl({ url: 'pages/Detail', params: { id: a.id, kind: 'article' } }))
+          }, (a: Article) => a.id)
+        }
       }
+      .width('92%')
+      .margin({ top: SPACE.sm })
     }
-    .width('92%')
-    .margin({ top: SPACE.sm })
   }
 
   @Builder questionList() {
-    List() {
-      // 读预缓存 filteredQuestions（'' 时=全部）
-      ForEach(this.filteredQuestions, (q: Question) => {
-        ListItem() {
-          this.rowItem(q.title, q.source, q.tags)
-        }
-        .onClick(() => router.pushUrl({ url: 'pages/Detail', params: { id: q.id, kind: 'question' } }))
-      }, (q: Question) => q.id)
+    if (this.filterTag !== '' && this.filteredQuestions.length === 0) {
+      Text(`没有命中「${this.filterTag}」的真题`)
+        .fontSize(FONT.bodySm)
+        .fontColor($r('app.color.text_secondary'))
+        .margin({ top: SPACE.xl })
+    } else {
+      List() {
+        // 读预缓存 filteredQuestions（'' 时=全部）
+        ForEach(this.filteredQuestions, (q: Question) => {
+          ListItem() {
+            this.rowItem(q.title, q.source, q.tags)
+          }
+          .onClick(() => router.pushUrl({ url: 'pages/Detail', params: { id: q.id, kind: 'question' } }))
+        }, (q: Question) => q.id)
+      }
+      .width('92%')
+      .margin({ top: SPACE.sm })
     }
-    .width('92%')
-    .margin({ top: SPACE.sm })
   }
 
   // 用户标签筛选条（横向滚动）：点击按标签过滤列表
