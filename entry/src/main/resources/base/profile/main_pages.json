@@ -1,0 +1,10 @@
+{
+  "src": [
+    "pages/Index",
+    "pages/Search",
+    "pages/Favorites",
+    "pages/StudyRecord",
+    "pages/ExamRecord",
+    "pages/Detail"
+  ]
+}

@@ -1,0 +1,23 @@
+# ===== DevEco / HarmonyOS 工程忽略项 =====
+
+# 含明文签名密码与本地绝对路径，禁止入库（clone 后由 DevEco 重新生成 / 重新签名）
+/build-profile.json5
+/local.properties
+
+# 构建缓存与产物
+/.hvigor/
+**/build/
+oh_modules/
+node_modules/
+
+# IDE
+/.idea/
+
+# 临时备份与同步日志（非源码）
+/_backup/
+_sync_*.log
+*.bak
+
+# OS
+.DS_Store
+Thumbs.db
