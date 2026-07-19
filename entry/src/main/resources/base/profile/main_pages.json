@@ -5,6 +5,7 @@
     "pages/Favorites",
     "pages/StudyRecord",
     "pages/ExamRecord",
-    "pages/Detail"
+    "pages/Detail",
+    "pages/StudyPlan"
   ]
 }

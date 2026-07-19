@@ -71,14 +71,23 @@ export struct ProfileView {
     router.pushUrl({ url: 'pages/ExamRecord' });
   }
 
-  // 通用入口行（标题 + 副标题 + 箭头）
+  private onStudyPlan(): void {
+    router.pushUrl({ url: 'pages/StudyPlan' });
+  }
+
+  // 通用入口行（标题 + 副标题 + 箭头）；icon 为空则不拼前缀（避免 emoji 渲染问题）
   @Builder entryRow(icon: string, title: string, sub: string, cb: () => void) {
     Row() {
       Column() {
-        Text(`${icon} ${title}`)
-          .fontSize(FONT.body)
-          .fontWeight(FontWeight.Medium)
-          .fontColor($r('app.color.text_primary'))
+        if (icon) {
+          Text(`${icon} ${title}`)
+        } else {
+          Text(title)
+        }
+        Text(sub)
+          .fontSize(FONT.caption)
+          .fontColor($r('app.color.text_secondary'))
+          .margin({ top: SPACE.xs })
         Text(sub)
           .fontSize(FONT.caption)
           .fontColor($r('app.color.text_secondary'))
@@ -116,6 +125,9 @@ export struct ProfileView {
 
           // 我的真题演练记录（入口，点击进入带搜索的子页）
           this.entryRow('🎯', '我的真题演练记录', `已完成 ${this.sessions.length} 套`, () => this.onExamRecord())
+
+          // 备考计划（入口，考试倒计时 + 复习任务清单）
+          this.entryRow('', '备考计划', '考试倒计时 + 复习任务清单', () => this.onStudyPlan())
         }
         .width('92%')
         .alignItems(HorizontalAlign.Start)
