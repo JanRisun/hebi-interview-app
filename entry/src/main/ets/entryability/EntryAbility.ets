@@ -10,6 +10,12 @@ const TAG: string = 'InterviewPrep';
 
 export default class EntryAbility extends UIAbility {
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
+    // 记录通知/深链启动目标（如代理提醒点击带 target=today），供 Index 路由直达
+    let launchTarget: string = '';
+    if (want.parameters && want.parameters['target']) {
+      launchTarget = want.parameters['target'] as string;
+    }
+    AppStorage.setOrCreate('launchTarget', launchTarget);
     // 记录系统深浅色模式到 AppStorage，供页面在 Token 自动切换之外参考
     AppStorage.setOrCreate('currentColorMode', this.context.config.colorMode);
     // 语音播报全局态（多个朗读按钮共享同一 TTS 引擎）

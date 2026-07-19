@@ -4,6 +4,7 @@
     { "name": "EntryAbility_desc", "value": "面试备考主入口" },
     { "name": "EntryAbility_label", "value": "鹤壁面试备考" },
     { "name": "microphone_reason", "value": "用于真题开口自测录音，仅存本机" },
-    { "name": "vibrate_reason", "value": "模考分段计时到点（思考结束、作答超时）振动提醒考生" }
+    { "name": "vibrate_reason", "value": "模考分段计时到点（思考结束、作答超时）振动提醒考生" },
+    { "name": "remind_reason", "value": "用于每日定时推送备考提醒通知" }
   ]
 }

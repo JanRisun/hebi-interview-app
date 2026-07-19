@@ -6,12 +6,22 @@ import { CategoryView } from './Category';
 import { FlashcardView } from './Flashcard';
 import { PracticeView } from './Practice';
 import { ProfileView } from './Profile';
+import { router } from '@kit.ArkUI';
 import { FONT, SPACE } from '../utils/Theme';
 
 @Entry
 @Component
 struct Index {
   @State current: number = 0;
+
+  // 通知/深链启动：若来自今日提醒(target=today)，自动直达备考计划页
+  aboutToAppear(): void {
+    const target: string = AppStorage.get<string>('launchTarget') ?? '';
+    if (target === 'today') {
+      AppStorage.set('launchTarget', '');
+      router.replaceUrl({ url: 'pages/StudyPlan' });
+    }
+  }
 
   // 自定义底部 Tab 按钮（SymbolGlyph 系统符号 + 文字，选中高亮品牌色）
   // iconStr: sys.symbol 资源名（如 'sys.symbol.book'），内部通过 $r() 引用
