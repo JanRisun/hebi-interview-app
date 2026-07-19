@@ -125,19 +125,18 @@ class _AsrHelperImpl {
         };
 
         // 打开文件并跳过 WAV 44 字节头
-        // 注意：seekSync 是 File 对象的实例方法（不是 fileIo 命名空间的静态方法）
+        // ArkTS fileIo 所有操作都是静态方法（传 fd），File 对象只是持有 .fd 的句柄，无实例方法
         const file = fileIo.openSync(wavPath, fileIo.OpenMode.READ_ONLY);
-        // 0 = 从文件开头算起（SeekPosition.SET_BEGIN 的等效数值，避免枚举路径问题）
-        file.seekSync(WAV_HEADER, 0);
+        // seekSync(fd, offset) 第三参数 whence 默认 0=SEEK_SET（从文件头算起）
+        fileIo.seekSync(file.fd, WAV_HEADER);
 
         const buf: ArrayBuffer = new ArrayBuffer(CHUNK);
-        // ArkTS fileIo.readSync 返回值类型是 number（实际读到的字节数），不是对象！
-        // 参数：(fd, buffer, options?) 其中 options 只有 offset(buffer偏移) 和 length(要读的字节数)
+        // fileIo.readSync 返回 number（实际读到的字节数），参数：(fd, buffer, {offset, length})
         let bytesRead: number = 0;
         const sleep = (ms: number): Promise<void> => new Promise<void>((r) => setTimeout(r, ms));
         (async (): Promise<void> => {
           try {
-            // 顺序读取：每次 readSync 自动将 fd 位置向前推进，无需手动维护 offset
+            // readSync 每次自动推进 fd 位置，顺序读到 EOF 为止
             while ((bytesRead = fileIo.readSync(file.fd, buf, { offset: 0, length: CHUNK })) > 0) {
               this.engine!.writeAudio(this.sessionId, new Uint8Array(buf.slice(0, bytesRead)));
               await sleep(WRITE_INTERVAL_MS);
@@ -146,7 +145,7 @@ class _AsrHelperImpl {
             const err = e as BusinessError;
             hilog.error(DOMAIN, TAG, 'writeAudio loop fail: %{public}s', err.message);
           } finally {
-            try { file.closeSync(); } catch (closeErr) { /* ignore */ }
+            try { fileIo.closeSync(file.fd); } catch (closeErr) { /* ignore */ }
             // 写完所有音频（或读到 EOF）→ 结束识别，触发 onComplete 返回最终文字
             this.engine!.finish(this.sessionId);
           }
