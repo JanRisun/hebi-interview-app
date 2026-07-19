@@ -245,7 +245,7 @@ struct StudyPlan {
 
   // 发布每日代理提醒（ReminderRequestAlarm，每天重复）
   private doPublish(): void {
-    const pkg: string = bundleManager.getBundleInfoForSelfSync(bundleManager.BundleFlag.GET_BUNDLE_INFO_DEFAULT).bundleName;
+    const pkg: string = bundleManager.getBundleInfoForSelfSync(bundleManager.BundleFlag.GET_BUNDLE_INFO_DEFAULT).appInfo.name;
     const req: reminderAgentManager.ReminderRequestAlarm = {
       reminderType: reminderAgentManager.ReminderType.REMINDER_TYPE_ALARM,
       hour: this.remindHour,
@@ -514,7 +514,7 @@ struct StudyPlan {
             .borderRadius(RADIUS.pill)
             .margin({ top: SPACE.sm })
             .onClick(() => {
-              router.pushUrl({ url: 'pages/Practice', params: { setId: this.today.set.id } });
+              router.pushUrl({ url: 'pages/Practice', params: { setId: this.today.set?.id ?? 0 } });
             })
         }
         .width('100%')
