@@ -2,9 +2,10 @@
 // 三态：收起（小圆可拖拽）→ 迷你（暂停条）→ 展开（完整控制栏）
 // 参考学习强国：常驻小圆 FAB（空闲也可见、可拖拽），播放时展开控制栏。
 // 支持自由拖拽，根据位置自动切换展开方向（靠左向右展，靠右向左展）
-// 定位方案：用 translate() 偏移（避免 position()/markAnchor() 的 ArkTS 类型检查坑）
-//   坐标模型：Stack 用 Alignment.TopStart，translate(x,y) 中 x/y 均为 vp（下/右为正），
-//   故默认位置为「距顶 posY、距左 posX」，拖拽直观。
+// 定位方案：用 alignSelf(BottomStart) + translate() 偏移（避免 position()/markAnchor() 的 ArkTS 类型检查坑）
+//   坐标模型：Stack 默认 TopStart，FAB 自身 alignSelf(BottomStart) 锚定左下角；
+//   translate(x,y) 中 x 右为正、y 下为正；baseX=距左、baseY=距底（从底部向上的距离），
+//   拖拽直观且【无需读取屏幕高度】，避免 aboutToAppear 时 display 未就绪导致高度为 0 跑到顶部。
 import display from '@ohos.display';
 import { TtsManager, SPEED_LABELS } from './TtsManager';
 import { FONT, RADIUS, SPACE } from './Theme';
@@ -30,9 +31,6 @@ interface ShadowStyle {
   offsetY: number;
 }
 
-// 模块级一次性标记：清掉旧版残留的拖拽坐标，让新默认位立即生效
-let gFloatResetDone: boolean = false;
-
 @Component
 export struct TtsFloatButton {
   // 全局 TTS 状态（AppStorage 双向绑定）
@@ -43,10 +41,10 @@ export struct TtsFloatButton {
 
   // 悬浮按钮自身状态
   @State floatState: FloatState = FloatState.Collapsed;
-  @State posX: number = 16;       // 距左距离（vp）
-  @State posY: number = 600;      // 距顶距离（vp），aboutToAppear 会重算为左下角
-  @State dragX: number = 0;       // 拖拽偏移 X（vp，累计）
-  @State dragY: number = 0;       // 拖拽偏移 Y（vp，累计）
+  @State baseX: number = 16;      // 距左距离（vp）：BottomStart 锚点 + translate
+  @State baseY: number = 80;      // 距底距离（vp）：从屏幕底部向上的距离（默认避开采底部操作栏）
+  @State dragX: number = 0;       // 拖拽瞬时偏移 X（vp，累计）
+  @State dragY: number = 0;       // 拖拽瞬时偏移 Y（vp，累计）
 
   // 尺寸常量
   private readonly BTN_SIZE: number = 48;
@@ -58,22 +56,22 @@ export struct TtsFloatButton {
   private readonly LEFT_MARGIN: number = 16;
 
   aboutToAppear(): void {
-    // 旧版拖拽坐标可能落在屏幕中部，清掉一次让新的「左下角 + 偏移」默认位立即生效
-    if (!gFloatResetDone) {
-      gFloatResetDone = true;
+    // 坐标模型版本迁移：v2 用 BottomStart + baseY(距底)，与旧版 TopStart + posY(距顶) 语义不同，
+    // 故首次进入时清掉旧版残留坐标，避免 Y 轴语义错乱导致按钮跑到顶部。
+    if (AppStorage.get<string>('ttsFloatVer') !== '2') {
+      AppStorage.setOrCreate('ttsFloatVer', '2');
       AppStorage.delete('ttsFloatX');
       AppStorage.delete('ttsFloatY');
     }
     const savedX: number | undefined = AppStorage.get<number>('ttsFloatX');
     const savedY: number | undefined = AppStorage.get<number>('ttsFloatY');
     if (savedX !== undefined && savedY !== undefined) {
-      this.posX = savedX;
-      this.posY = savedY;
+      this.baseX = savedX;
+      this.baseY = savedY;
     } else {
-      // 默认锚定「左下角」：距左 LEFT_MARGIN，距底 BOTTOM_RESERVE（避开底部操作栏）
-      const s = this.getScreenVp();
-      this.posX = this.LEFT_MARGIN;
-      this.posY = Math.max(0, s.h - this.PANEL_HEIGHT - this.BOTTOM_RESERVE);
+      // 默认锚定「左下角 + 规范偏移」：距左 LEFT_MARGIN，距底 BOTTOM_RESERVE（避开底部操作栏）
+      this.baseX = this.LEFT_MARGIN;
+      this.baseY = this.BOTTOM_RESERVE;
     }
   }
 
@@ -101,13 +99,15 @@ export struct TtsFloatButton {
     return idx >= 0 && idx < SPEED_LABELS.length ? SPEED_LABELS[idx] : `${this.speed}x`;
   }
 
-  // 当前总偏移量（位置+拖拽）
+  // 当前总偏移量（基准位置 + 拖拽瞬时偏移）
+  // 坐标系：BottomStart 锚点（按钮默认贴左下角），translate x 右为正、y 下为正。
+  // 因此「距底 baseY」需取负映射到 translate.y（向上 = 减小距底）。
   private get totalX(): number {
-    return this.posX + this.dragX;
+    return this.baseX + this.dragX;
   }
 
   private get totalY(): number {
-    return this.posY + this.dragY;
+    return -this.baseY + this.dragY;
   }
 
   // 点击切换状态（播放态下）
@@ -145,10 +145,10 @@ export struct TtsFloatButton {
     TtsManager.cycleSpeed();
   }
 
-  // 保存位置
+  // 保存基准位置（注意存的是 baseX/baseY，不是带负号的 totalY）
   private savePosition(): void {
-    AppStorage.setOrCreate('ttsFloatX', this.totalX);
-    AppStorage.setOrCreate('ttsFloatY', this.totalY);
+    AppStorage.setOrCreate('ttsFloatX', this.baseX);
+    AppStorage.setOrCreate('ttsFloatY', this.baseY);
   }
 
   // 获取屏幕逻辑尺寸（vp），避免把像素当 vp 用导致边界错乱
@@ -164,18 +164,19 @@ export struct TtsFloatButton {
     }
   }
 
-  // 拖拽结束：归位+边界clamp（vp 单位）
+  // 拖拽结束：把瞬时偏移并入基准位置，并做边界 clamp（vp 单位）
   private clampPosition(): void {
-    this.posX += this.dragX;
-    this.posY += this.dragY;
+    this.baseX += this.dragX;
+    this.baseY -= this.dragY;   // BottomStart：手指下移(dragY>0) → 距底减小
     this.dragX = 0;
     this.dragY = 0;
     const scr = this.getScreenVp();
     const panelW: number = this.getPanelWidth();
     // 水平：LEFT_MARGIN ~ 屏宽-面板宽（左侧保留规范间隙）
-    this.posX = Math.max(this.LEFT_MARGIN, Math.min(this.posX, scr.w - panelW));
-    // 垂直：0 ~ 屏高-面板高-底部操作栏预留（不允许拖到底部栏之下）
-    this.posY = Math.max(0, Math.min(this.posY, scr.h - this.PANEL_HEIGHT - this.BOTTOM_RESERVE));
+    this.baseX = Math.max(this.LEFT_MARGIN, Math.min(this.baseX, Math.max(this.LEFT_MARGIN, scr.w - panelW)));
+    // 垂直（距底）：0 ~ 屏高-面板高（不允许拖出屏幕上下边界）
+    const maxBottom: number = scr.h > 0 ? Math.max(0, scr.h - this.PANEL_HEIGHT) : 9999;
+    this.baseY = Math.max(0, Math.min(this.baseY, maxBottom));
     this.savePosition();
   }
 
@@ -203,7 +204,8 @@ export struct TtsFloatButton {
     }
     .width(this.getPanelWidth())
     .height(this.floatState === FloatState.Collapsed ? this.BTN_SIZE : this.PANEL_HEIGHT)
-    .translate({ x: this.totalX, y: this.totalY })
+    .alignSelf(Alignment.BottomStart)                 // 锚定左下角，无需读取屏幕高度即可贴底
+    .translate({ x: this.totalX, y: this.totalY })    // x 右正、y 下正（baseY 已取负）
     .gesture(
       PanGesture()
         .onActionUpdate((event: GestureEvent) => {
