@@ -10,8 +10,8 @@
 //   - 单题作答约 150s > 60s 短语音上限 → createEngine 必须 recognizerMode:'long'（≤8h）。
 //   - 结果：onResult 回调中 result.result 为文字、result.isFinal=true 为最终完整结果；finish() 触发 onComplete。
 //
-// ⚠️ 输入格式要求：仅支持 WAV(PCM 16k/单声道/16bit)。当前录音用 AVRecorder(AAC/m4a)，
-//   故实际链路为「录音(m4a) → 待实现解码(PCM) → 转写」；若后续切换到 OH Audio 录 PCM 则可直接喂入。
+// ⚠️ 输入格式要求：仅支持 WAV(PCM 16k/单声道/16bit)。RecorderBar 已改用 OH Audio 直录 PCM 写 WAV，
+//   故「录音(WAV/PCM) → 转写」链路已闭环，无需额外解码步骤。
 import { speechRecognizer } from '@kit.CoreSpeechKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { fileIo } from '@kit.CoreFileKit';

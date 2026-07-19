@@ -1,8 +1,9 @@
 // 开口自测录音条：复用组件，按题目 id 存录音文件
-// 能力：麦克风权限检查/动态申请 + AVRecorder 录制(m4a) + AVPlayer 回放 + 计时
+// 能力：麦克风权限检查/动态申请 + OH Audio 直录 PCM(WAV) + AVPlayer 回放 + 计时
 // 仅用本机沙箱文件，不上传。API 参考 HarmonyOS MediaKit / Core File Kit / abilityAccessCtrl
 import { common } from '@kit.AbilityKit';
 import { media } from '@kit.MediaKit';
+import { audio } from '@kit.AudioKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { fileIo } from '@kit.CoreFileKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
@@ -26,16 +27,17 @@ export struct RecorderBar {
   @State hasTranscript: boolean = false; // 该题目是否已有转写文本
   @State transcriptText: string = '';    // 转写结果（端侧语音识别）
 
-  private avRecorder: media.AVRecorder | undefined = undefined;
+  private audioCapturer: audio.AudioCapturer | undefined = undefined;  // OH Audio 直录 PCM
   private avPlayer: media.AVPlayer | undefined = undefined;
   private recFile: fileIo.File | undefined = undefined;
+  private pcmOffset: number = 0;   // 已写入 PCM 字节数（WAV 头 44 字节之后）
   private playFile: fileIo.File | undefined = undefined;
   private timer: number = 0;
 
-  // 录音文件路径：应用沙箱 filesDir/rec_<qid>.m4a（AAC 编码，AVRecorder 仅支持压缩格式）
+  // 录音文件路径：应用沙箱 filesDir/rec_<qid>.wav（OH Audio 直录 PCM 16k/单/16bit，对接 AsrHelper 的 WAV 头跳过逻辑）
   private filePath(): string {
     const ctx = getContext(this) as common.UIAbilityContext;
-    return ctx.filesDir + '/rec_' + this.qid + '.m4a';
+    return ctx.filesDir + '/rec_' + this.qid + '.wav';
   }
 
   // 转写文本路径：与录音同名的 .txt
@@ -72,20 +74,12 @@ export struct RecorderBar {
     }
   }
 
-  // 端侧转写：调 AsrHelper 把录音文件转成文字，存本机并展示
-  // ⚠️ 当前录音格式为 m4a(AAC)，而 speechRecognizer 仅接受 PCM/WAV 输入。
-  //   故实际转写链路需要先经 AVCodec 解码 m4a→PCM（待实现），当前会返回空字符串 + 提示用户。
+  // 端侧转写：录音已是 WAV(PCM 16k/单/16bit)，直接调 AsrHelper 转成文字，存本机并展示。
+  // 全程离线、零密钥、隐私不出本机。
   private async doTranscribe(): Promise<void> {
     if (this.transcribing) return;
     this.transcribing = true;
     try {
-      // 格式检查：当前录的是 .m4a，ASR 引擎只吃 .wav/.pcm
-      if (this.filePath().endsWith('.m4a')) {
-        this.transcriptText = '[格式不支持] 当前录音为 AAC(m4a) 格式，语音识别引擎仅支持 WAV(PCM) 格式输入。' +
-          '后续需增加音频解码步骤（m4a→PCM）后才能自动转写。';
-        this.hasTranscript = false;
-        return;
-      }
       const text: string = await AsrHelper.transcribeFile(this.filePath());
       this.transcriptText = text || '[未识别到文字]';
       this.hasTranscript = text.length > 0;
@@ -153,6 +147,38 @@ export struct RecorderBar {
     }
   }
 
+  // 写标准 WAV 头（44 字节，PCM 16k/单/16bit）。dataSize=数据区字节数；
+  // 录音前写 0 占位，停止时回写真实值（PCM 数据连续写在 44 字节之后）。
+  private writeWavHeader(fd: number, dataSize: number): void {
+    const buf: ArrayBuffer = new ArrayBuffer(44);
+    const dv: DataView = new DataView(buf);
+    const sRate: number = 16000;
+    const ch: number = 1;
+    const bits: number = 16;
+    const byteRate: number = sRate * ch * bits / 8;
+    const blockAlign: number = ch * bits / 8;
+    this.setStr(dv, 0, 'RIFF');
+    dv.setUint32(4, 36 + dataSize, true);
+    this.setStr(dv, 8, 'WAVE');
+    this.setStr(dv, 12, 'fmt ');
+    dv.setUint32(16, 16, true);          // subchunk1Size
+    dv.setUint16(20, 1, true);            // PCM
+    dv.setUint16(22, ch, true);
+    dv.setUint32(24, sRate, true);
+    dv.setUint32(28, byteRate, true);
+    dv.setUint16(32, blockAlign, true);
+    dv.setUint16(34, bits, true);
+    this.setStr(dv, 36, 'data');
+    dv.setUint32(40, dataSize, true);
+    fileIo.writeSync(fd, buf, { offset: 0, length: 44 });
+  }
+
+  private setStr(dv: DataView, off: number, s: string): void {
+    for (let i: number = 0; i < s.length; i++) {
+      dv.setUint8(off + i, s.charCodeAt(i));
+    }
+  }
+
   private startTimer(): void {
     this.clearTimer();
     this.timer = setInterval((): void => { this.sec++; }, 1000);
@@ -165,39 +191,37 @@ export struct RecorderBar {
     }
   }
 
-  // 开始录音：prepare → start（严格状态机）
+  // 开始录音：OH Audio AudioCapturer 直录 PCM 16k/单/16bit → 写 WAV（44 头 + PCM），对接 AsrHelper
   private async startRec(): Promise<void> {
     if (!this.permOk) {
       await this.requestPerm();
       if (!this.permOk) return;
     }
     try {
-      this.avRecorder = await media.createAVRecorder();
-      this.avRecorder.on('error', (err: BusinessError): void => {
-        hilog.error(DOMAIN, TAG, 'rec error: %{public}s', err.message);
+      const capturer = await audio.createAudioCapturer({
+        streamInfo: {
+          samplingRate: audio.AudioSamplingRate.SAMPLE_RATE_16000,
+          channels: audio.AudioChannel.CHANNEL_1,
+          sampleFormat: audio.AudioSampleFormat.SAMPLE_FORMAT_S16LE,
+          encodingType: audio.AudioEncodingType.ENCODING_TYPE_RAW,
+        },
+        capturerInfo: { source: audio.SourceType.SOURCE_TYPE_MIC, capturerFlags: 0 },
       });
-      // 录音格式：AAC / m4a（AVRecorder 仅支持压缩编码，不支持直录 PCM/WAV）
-      // 后续若需 ASR 转写，需另加 m4a→PCM 解码步骤（AVCodec）或改用 OH Audio 录制 raw PCM
-      const avProfile: media.AVRecorderProfile = {
-        audioBitrate: 128000,
-        audioChannels: 1,
-        audioCodec: media.CodecMimeType.AUDIO_AAC,
-        aacProfile: media.AacProfile.AAC_LC,
-        audioSampleRate: 44100,
-        fileFormat: media.ContainerFormatType.CFT_MPEG_4A,
-      };
+      this.audioCapturer = capturer;
       const file = fileIo.openSync(
         this.filePath(),
         fileIo.OpenMode.READ_WRITE | fileIo.OpenMode.CREATE | fileIo.OpenMode.TRUNC
       );
       this.recFile = file;
-      const avConfig: media.AVRecorderConfig = {
-        audioSourceType: media.AudioSourceType.AUDIO_SOURCE_TYPE_MIC,
-        profile: avProfile,
-        url: 'fd://' + file.fd.toString(),
-      };
-      await this.avRecorder.prepare(avConfig);
-      await this.avRecorder.start();
+      this.writeWavHeader(file.fd, 0);   // 占位头（dataSize=0），停止时回写真实值
+      this.pcmOffset = 44;
+      capturer.on('readData', (buffer: ArrayBuffer): void => {
+        if (this.recFile) {
+          fileIo.writeSync(this.recFile.fd, buffer, { offset: this.pcmOffset, length: buffer.byteLength });
+          this.pcmOffset += buffer.byteLength;
+        }
+      });
+      await capturer.start();
       this.recording = true;
       this.sec = 0;
       this.startTimer();
@@ -207,16 +231,18 @@ export struct RecorderBar {
     }
   }
 
-  // 停止录音：stop → release，并关闭 fd
+  // 停止录音：stop → release，回写真实 WAV 头（dataSize），关闭 fd
   private async stopRec(): Promise<void> {
     this.clearTimer();
     try {
-      if (this.avRecorder) {
-        await this.avRecorder.stop();
-        await this.avRecorder.release();
-        this.avRecorder = undefined;
+      if (this.audioCapturer) {
+        try { await this.audioCapturer.stop(); } catch (e) { /* ignore */ }
+        try { await this.audioCapturer.release(); } catch (e) { /* ignore */ }
+        this.audioCapturer = undefined;
       }
       if (this.recFile) {
+        const dataSize: number = Math.max(0, this.pcmOffset - 44);
+        try { this.writeWavHeader(this.recFile.fd, dataSize); } catch (e) { /* ignore */ }
         try { fileIo.closeSync(this.recFile.fd); } catch (e) { /* ignore */ }
         this.recFile = undefined;
       }
@@ -285,9 +311,9 @@ export struct RecorderBar {
     this.recording = false;
     this.playing = false;
     this.sec = 0;
-    if (this.avRecorder) {
-      this.avRecorder.release().then((): void => {}).catch((): void => {});
-      this.avRecorder = undefined;
+    if (this.audioCapturer) {
+      this.audioCapturer.release().then((): void => {}).catch((): void => {});
+      this.audioCapturer = undefined;
     }
     if (this.avPlayer) {
       this.avPlayer.release().then((): void => {}).catch((): void => {});
