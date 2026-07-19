@@ -1,11 +1,11 @@
 // 底部 4 Tab 主框架：素材 / 速记卡 / 真题模考 / 个人中心
-// 外层 Stack：底层 Tabs + 上层 TTS 悬浮播控按钮（全局覆盖）
+// 根容器用 Stack 包裹 4 Tab 内容；语音悬浮播控按钮不放在主框架（列表页默认不显示），
+// 由各具体页面（详情页 / 速记卡页）按需自行叠加。
 // SymbolGlyph 是 ArkUI 内置组件（同 Text/Image/Column），无需从 kit 导入
 import { CategoryView } from './Category';
 import { FlashcardView } from './Flashcard';
 import { PracticeView } from './Practice';
 import { ProfileView } from './Profile';
-import { TtsFloatButton } from '../utils/TtsFloatButton';
 import { FONT, SPACE } from '../utils/Theme';
 
 @Entry
@@ -33,7 +33,7 @@ struct Index {
   }
 
   build() {
-    // Stack 用 BottomStart 对齐：悬浮按钮默认贴左下角，translate 做微调偏移
+    // 根容器：包裹 4 Tab 内容（悬浮播控按钮不放主框架，由各具体页按需叠加）
     Stack({ alignContent: Alignment.BottomStart }) {
       // 底层：Tab 页面内容
       Column() {
@@ -64,9 +64,6 @@ struct Index {
       .width('100%')
       .height('100%')
       .backgroundColor($r('app.color.background'))
-
-      // 上层：TTS 悬浮播控按钮（translate 自定位，全局覆盖可拖拽）
-      TtsFloatButton()
     }
     .width('100%')
     .height('100%')
