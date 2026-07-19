@@ -44,18 +44,18 @@ export struct PracticeView {
     return t > 0 ? t : 600;
   }
 
-  // 当前题思考时长（秒）：套题有则用之，无则默认 30（考情基线：思考约30秒）
+  // 当前题思考时长（秒）：套题有则用之，无则默认 30
   get thinkSec(): number {
     const s: MockSet | null = this.curSet;
-    const v: number = (s && s.totalThink > 0) ? s.totalThink : 30;
-    return Number.isFinite(v) && v > 0 ? v : 30;   // 防御：NaN/负数/Infinity 全部兜底
+    const v = (s && typeof s.totalThink === 'number' && s.totalThink > 0) ? s.totalThink : 30;
+    return Number.isFinite(v) ? v : 30;
   }
 
-  // 当前题作答时长（秒）：套题有则用之，无则默认 150（2分30秒，考情基线）
+  // 当前题作答时长（秒）：套题有则用之，无则默认 150（2分30秒）
   get speakSec(): number {
     const s: MockSet | null = this.curSet;
-    const v: number = (s && s.totalSpeak > 0) ? s.totalSpeak : 150;
-    return Number.isFinite(v) && v > 0 ? v : 150; // 防御：NaN/负数/Infinity 全部兜底
+    const v = (s && typeof s.totalSpeak === 'number' && s.totalSpeak > 0) ? s.totalSpeak : 150;
+    return Number.isFinite(v) ? v : 150;
   }
 
   // 统计各评级数量（供报告页 builder 引用，避免在 builder 内写 const）
@@ -122,12 +122,18 @@ export struct PracticeView {
     }
   }
 
-  // 分段计时主循环：思考(thinkSec)倒计时 → 作答(speakSec)倒计时 → 超时继续计（提示音）
+  // 分段计时主循环：思考→作答倒计时 → 超时继续计（振动提示）
+  // 重要：初始值全部用本地变量算好再赋 @State，避免 getter 时序/NaN 问题
   startTimer(): void {
     this.clearTimer();
+    const s: MockSet | null = this.curSet;
+    // 从 curSet 读时长，三层兜底确保永远不是 NaN/0/负数
+    const tThink: number = (s && typeof s.totalThink === 'number' && s.totalThink > 0) ? s.totalThink : 30;
+    const tSpeak: number = (s && typeof s.totalSpeak === 'number' && s.totalSpeak > 0) ? s.totalSpeak : 150;
+
     this.timerStarted = true;          // 标记：用户已开始答题，UI 从待机态切到倒计
     this.stage = 'think';
-    this.remain = this.thinkSec;       // 取防御后的值（保证非 NaN）
+    this.remain = tThink;             // 用本地变量（已保证有效），不走 getter
     this.timer = setInterval((): void => {
       this.elapsed++;          // 整卷总用时累加（含超时）
       this.remain--;          // 当前分段倒计时
@@ -135,7 +141,7 @@ export struct PracticeView {
         if (this.stage === 'think') {
           // 思考结束 → 进入作答，重置分段计时并响提示音
           this.stage = 'speak';
-          this.remain = this.speakSec;
+          this.remain = tSpeak;       // 用闭包捕获的本地变量，不走 getter
           this.beep('start');
         } else if (this.remain === 0) {
           // 作答时间刚到 → 响提示音（不强制跳题，给用户缓冲；remain 继续变负显示超时）
@@ -148,7 +154,8 @@ export struct PracticeView {
   // 切到下一题时重置分段计时（整卷 elapsed 不清零，timerStarted 保持）
   private resetStage(): void {
     this.stage = 'think';
-    this.remain = this.thinkSec;       // 取防御后的值
+    const s: MockSet | null = this.curSet;
+    this.remain = (s && typeof s.totalThink === 'number' && s.totalThink > 0) ? s.totalThink : 30;
   }
 
   // 提示音：用振动反馈（无需音频资源，跨版本稳定）。start=短振(开始作答)，timeout=长振(时间到)
@@ -168,7 +175,7 @@ export struct PracticeView {
     this.idx = 0;
     this.elapsed = 0;
     this.timerStarted = false;          // 待机态：用户需手动点「开始答题」才启动倒计
-    this.remain = this.thinkSec;       // 预填（UI 显示用，防御 NaN）
+    this.remain = (s && typeof s.totalThink === 'number' && s.totalThink > 0) ? s.totalThink : 30;
     this.phase = 'exam';
     // 不再自动 startTimer()——等用户点「开始答题」按钮
   }
@@ -191,7 +198,7 @@ export struct PracticeView {
     this.idx = 0;
     this.elapsed = 0;
     this.timerStarted = false;          // 待机态
-    this.remain = this.thinkSec;       // 预填（UI 显示用，防御 NaN）
+    this.remain = (fake && typeof fake.totalThink === 'number' && fake.totalThink > 0) ? fake.totalThink : 30;
     this.phase = 'exam';
     // 不再自动 startTimer()——等用户点「开始答题」按钮
   }
