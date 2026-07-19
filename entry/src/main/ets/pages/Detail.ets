@@ -6,7 +6,7 @@ import { FavStore } from '../utils/FavStore';
 import { UserTagStore } from '../utils/UserTagStore';
 import { RecorderBar } from '../utils/RecorderBar';
 import { TtsButton } from '../utils/TtsButton';
-import { TtsFloatButton } from '../utils/TsFloatButton';
+import { TtsFloatButton } from '../utils/TtsFloatButton';
 import { FONT, RADIUS, SPACE } from '../utils/Theme';
 
 // 预设快捷标记（点击切换：未加→添加，已加→移除）

@@ -5,7 +5,7 @@ import { DataStore } from '../model/DataStore';
 import { Section } from '../model/Types';
 import { FONT, RADIUS, SPACE } from '../utils/Theme';
 import { TtsButton } from '../utils/TtsButton';
-import { TtsFloatButton } from '../utils/TsFloatButton';
+import { TtsFloatButton } from '../utils/TtsFloatButton';
 
 interface Card {
   title: string;
