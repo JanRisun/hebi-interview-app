@@ -30,6 +30,9 @@ interface ShadowStyle {
   offsetY: number;
 }
 
+// 模块级一次性标记：清掉旧版残留的拖拽坐标，让新默认位立即生效
+let gFloatResetDone: boolean = false;
+
 @Component
 export struct TtsFloatButton {
   // 全局 TTS 状态（AppStorage 双向绑定）
@@ -41,7 +44,7 @@ export struct TtsFloatButton {
   // 悬浮按钮自身状态
   @State floatState: FloatState = FloatState.Collapsed;
   @State posX: number = 16;       // 距左距离（vp）
-  @State posY: number = 600;      // 距顶距离（vp）
+  @State posY: number = 600;      // 距顶距离（vp），aboutToAppear 会重算为左下角
   @State dragX: number = 0;       // 拖拽偏移 X（vp，累计）
   @State dragY: number = 0;       // 拖拽偏移 Y（vp，累计）
 
@@ -50,18 +53,27 @@ export struct TtsFloatButton {
   private readonly PANEL_HEIGHT: number = 52;
   private readonly EXPANDED_WIDTH: number = 280;
   private readonly MINI_WIDTH: number = 160;
+  // 底部操作栏预留：底部 Tab 栏约 56vp + UI 规范间隙 24vp = 80vp
+  private readonly BOTTOM_RESERVE: number = 80;
+  private readonly LEFT_MARGIN: number = 16;
 
   aboutToAppear(): void {
+    // 旧版拖拽坐标可能落在屏幕中部，清掉一次让新的「左下角 + 偏移」默认位立即生效
+    if (!gFloatResetDone) {
+      gFloatResetDone = true;
+      AppStorage.delete('ttsFloatX');
+      AppStorage.delete('ttsFloatY');
+    }
     const savedX: number | undefined = AppStorage.get<number>('ttsFloatX');
     const savedY: number | undefined = AppStorage.get<number>('ttsFloatY');
     if (savedX !== undefined && savedY !== undefined) {
       this.posX = savedX;
       this.posY = savedY;
     } else {
-      // 默认放在左下区域（距顶 = 屏高 - 200）
+      // 默认锚定「左下角」：距左 LEFT_MARGIN，距底 BOTTOM_RESERVE（避开底部操作栏）
       const s = this.getScreenVp();
-      this.posX = 16;
-      this.posY = Math.max(0, s.h - 200);
+      this.posX = this.LEFT_MARGIN;
+      this.posY = Math.max(0, s.h - this.PANEL_HEIGHT - this.BOTTOM_RESERVE);
     }
   }
 
@@ -160,10 +172,10 @@ export struct TtsFloatButton {
     this.dragY = 0;
     const scr = this.getScreenVp();
     const panelW: number = this.getPanelWidth();
-    // 水平：0 ~ 屏宽-面板宽
-    this.posX = Math.max(0, Math.min(this.posX, scr.w - panelW));
-    // 垂直：0 ~ 屏高-面板高-底部预留
-    this.posY = Math.max(0, Math.min(this.posY, scr.h - this.PANEL_HEIGHT - 120));
+    // 水平：LEFT_MARGIN ~ 屏宽-面板宽（左侧保留规范间隙）
+    this.posX = Math.max(this.LEFT_MARGIN, Math.min(this.posX, scr.w - panelW));
+    // 垂直：0 ~ 屏高-面板高-底部操作栏预留（不允许拖到底部栏之下）
+    this.posY = Math.max(0, Math.min(this.posY, scr.h - this.PANEL_HEIGHT - this.BOTTOM_RESERVE));
     this.savePosition();
   }
 
