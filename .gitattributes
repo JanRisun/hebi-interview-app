@@ -1,3 +1,8 @@
 # 告诉 Git 托管平台：.ets 是 ArkTS（HarmonyOS Extended TypeScript），
 # 归类为 TypeScript 语言统计
 *.ets linguist-language=TypeScript
+
+# 根目录的构建/工具脚本（Node.js，用于 markdown→data.json、生成占位图标），
+# 属于生成型工具，非应用源码，不计入仓库语言统计
+md2json.js linguist-generated
+gen_icon.js linguist-generated
