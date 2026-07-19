@@ -2,9 +2,15 @@
 // 数据存本地 preferences（PREF_NAME='practice'），key：plan_exam_date / plan_tasks
 import { common } from '@kit.AbilityKit';
 import { preferences } from '@kit.ArkData';
-import { DatePickerResult } from '@kit.ArkUI';
 import { BackHeader } from '../utils/BackHeader';
 import { FONT, RADIUS, SPACE } from '../utils/Theme';
+
+// 日期选择器回调值（与系统 DatePickerResult 字段一致）
+interface PickerDateRes {
+  year: number;
+  month: number;   // 0-based
+  day: number;
+}
 
 const PREF_NAME: string = 'practice';
 const KEY_EXAM_DATE: string = 'plan_exam_date';
@@ -113,7 +119,7 @@ struct StudyPlan {
       start: today,
       end: max,
       selected: sel,
-      onAccept: (value: DatePickerResult): void => {
+      onAccept: (value: PickerDateRes): void => {
         const y: number = value.year;
         const m: number = value.month + 1;  // month 为 0-based
         const d: number = value.day;
