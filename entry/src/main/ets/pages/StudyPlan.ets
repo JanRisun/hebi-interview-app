@@ -1,7 +1,7 @@
 // 备考计划：考试倒计时 + 面试复习任务清单 + 每日提醒 + 今日备考
 // 数据存本地 preferences（PREF_NAME='practice'）
 // 每日提醒用系统代理提醒（reminderAgentManager），App 关了也照常弹通知
-import { common, bundleManager } from '@kit.AbilityKit';
+import { common } from '@kit.AbilityKit';
 import { preferences } from '@kit.ArkData';
 import { router } from '@kit.ArkUI';
 import { reminderAgentManager } from '@kit.BackgroundTasksKit';
@@ -11,7 +11,9 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import { BackHeader } from '../utils/BackHeader';
 import { FONT, RADIUS, SPACE } from '../utils/Theme';
 import { DataStore } from '../model/DataStore';
+import { publishDailyReminder } from '../utils/ReminderHelper';
 import { Article, MockSet, AppData } from '../model/Types';
+import { IconTile, SectionTitle } from '../utils/Ui';
 
 const PREF_NAME: string = 'practice';
 const KEY_EXAM_DATE: string = 'plan_exam_date';
@@ -20,7 +22,10 @@ const KEY_REMIND_ON: string = 'plan_remind_on';
 const KEY_REMIND_HOUR: string = 'plan_remind_hour';
 const KEY_REMIND_MIN: string = 'plan_remind_min';
 const KEY_REMIND_ID: string = 'plan_remind_id';
-const REMIND_NOTIFY_ID: number = 1001;   // 固定通知 ID，重复发布自动覆盖
+// 每日素材洗牌牌堆前缀（_order 洗牌顺序 / _pos 当前位置 / _day 上次投放日），抽完一轮再重洗
+const DECK_MAT: string = 'deck_mat';
+const DECK_KNOW: string = 'deck_know';
+const DECK_SET: string = 'deck_set';
 
 // 内置面试题型模块（默认复习清单，用户可增删），通用备考口径，不绑定具体岗位
 const DEFAULT_MODULES: string[] = [
@@ -97,9 +102,9 @@ struct StudyPlan {
       this.remindMinute = p.getSync(KEY_REMIND_MIN, 0) as number;
       this.remindId = p.getSync(KEY_REMIND_ID, -1) as number;
     });
-    // 今日备考内容（需 DataStore 先加载）
+    // 今日备考内容（需 DataStore 先加载）：按持久化牌堆投放，抽完一轮再重洗
     DataStore.load(ctx).then((): void => {
-      this.today = this.pickToday();
+      this.refreshToday(ctx);
     });
   }
 
@@ -155,23 +160,94 @@ struct StudyPlan {
   }
 
   // 按日期轮换取今日素材 / 知识 / 套题
-  private pickToday(): TodayPlan | null {
+  // 今日备考：从持久化洗牌牌堆取 mat/know/set，每天推进一张，抽完一轮自动重洗（单轮不重复）
+  private async refreshToday(ctx: common.UIAbilityContext): Promise<void> {
     const data: AppData | null = DataStore.data;
     if (!data || data.articles.length === 0 || data.sets.length === 0) {
-      return null;
+      this.today = null;
+      return;
     }
-    const now: Date = new Date();
-    const offset: number = now.getMonth() * 31 + now.getDate();
+    const p: preferences.Preferences = this.prefs ?? await preferences.getPreferences(ctx, PREF_NAME);
+    const todayStr: string = this.dateKey(new Date());
+
     const all: Article[] = data.articles;
     const mats: Article[] = all.filter((a: Article): boolean => a.category.indexOf('素材') >= 0);
     const knows: Article[] = all.filter((a: Article): boolean => a.category.indexOf('知识') >= 0);
     const matPool: Article[] = mats.length > 0 ? mats : all;
     const knowPool: Article[] = knows.length > 0 ? knows : all;
     const sets: MockSet[] = DataStore.sets();
-    const mat: Article = matPool[offset % matPool.length];
-    const know: Article = knowPool[offset % knowPool.length];
-    const set: MockSet = sets[offset % sets.length];
-    return { mat: mat, know: know, set: set };
+
+    const matId: string = await this.nextFromDeck(p, DECK_MAT, matPool.map((a: Article): string => a.id), todayStr);
+    const knowId: string = await this.nextFromDeck(p, DECK_KNOW, knowPool.map((a: Article): string => a.id), todayStr);
+    const setId: string = await this.nextFromDeck(p, DECK_SET, sets.map((s: MockSet): string => s.id), todayStr);
+
+    this.today = {
+      mat: matPool.find((a: Article): boolean => a.id === matId)!,
+      know: knowPool.find((a: Article): boolean => a.id === knowId)!,
+      set: sets.find((s: MockSet): boolean => s.id === setId)!
+    };
+  }
+
+  // 从持久化洗牌牌堆取下一个 id：牌堆与当前池不符→重洗；跨新版日期→推进一张，越界则重洗重头开始
+  private async nextFromDeck(p: preferences.Preferences, prefix: string, ids: string[], todayStr: string): Promise<string> {
+    if (ids.length === 0) {
+      return '';
+    }
+    const orderKey: string = prefix + '_order';
+    const posKey: string = prefix + '_pos';
+    const dayKey: string = prefix + '_day';
+    let order: string[] = [];
+    const raw: string = p.getSync(orderKey, '') as string;
+    if (raw) {
+      try {
+        order = JSON.parse(raw) as string[];
+      } catch (e) {
+        order = [];
+      }
+    }
+    // 牌堆与当前池不一致（数量/内容变了）→ 重洗
+    const sameSet: boolean = order.length === ids.length && ids.every((id: string): boolean => order.includes(id));
+    if (!sameSet) {
+      order = this.shuffle(ids);
+      p.putSync(orderKey, JSON.stringify(order));
+      p.putSync(posKey, 0);
+      p.putSync(dayKey, '');
+    }
+    let pos: number = p.getSync(posKey, 0) as number;
+    const lastDay: string = p.getSync(dayKey, '') as string;
+    if (lastDay !== todayStr) {
+      pos = pos + 1;
+      if (pos >= order.length) {
+        order = this.shuffle(ids);
+        p.putSync(orderKey, JSON.stringify(order));
+        pos = 0;
+      }
+      p.putSync(posKey, pos);
+      p.putSync(dayKey, todayStr);
+    }
+    return order[pos] ?? ids[0];
+  }
+
+  // Fisher–Yates 洗牌（返回新数组，不改原数组）
+  private shuffle<T>(arr: T[]): T[] {
+    const a: T[] = arr.slice();
+    for (let i: number = a.length - 1; i > 0; i--) {
+      const j: number = Math.floor(Math.random() * (i + 1));
+      const tmp: T = a[i];
+      a[i] = a[j];
+      a[j] = tmp;
+    }
+    return a;
+  }
+
+  // 本地日期 → 'YYYY-MM-DD'（用于判断"是否新的一天"）
+  private dateKey(d: Date): string {
+    const y: number = d.getFullYear();
+    const m: number = d.getMonth() + 1;
+    const day: number = d.getDate();
+    const mm: string = m < 10 ? '0' + m.toString() : m.toString();
+    const dd: string = day < 10 ? '0' + day.toString() : day.toString();
+    return `${y}-${mm}-${dd}`;
   }
 
   // 弹出日期选择器（API 18+ 推荐 getUIContext().showDatePickerDialog）
@@ -243,33 +319,17 @@ struct StudyPlan {
     });
   }
 
-  // 发布每日代理提醒（ReminderRequestAlarm，每天重复）
+  // 发布每日代理提醒（ReminderRequestAlarm，每天重复）—— 统一走 ReminderHelper，避免请求构建逻辑重复/漂移
   private doPublish(): void {
-    const pkg: string = bundleManager.getBundleInfoForSelfSync(bundleManager.BundleFlag.GET_BUNDLE_INFO_DEFAULT).appInfo.name;
-    const req: reminderAgentManager.ReminderRequestAlarm = {
-      reminderType: reminderAgentManager.ReminderType.REMINDER_TYPE_ALARM,
-      hour: this.remindHour,
-      minute: this.remindMinute,
-      daysOfWeek: [1, 2, 3, 4, 5, 6, 7],
-      actionButton: [
-        { title: '关闭', type: reminderAgentManager.ActionButtonType.ACTION_BUTTON_TYPE_CLOSE }
-      ],
-      wantAgent: {
-        pkgName: pkg,
-        abilityName: 'EntryAbility'
-      },
-      title: '面试备考提醒',
-      content: '今日素材 + 知识 + 1 套套题已就绪，点击开始',
-      notificationId: REMIND_NOTIFY_ID,
-      slotType: notificationManager.SlotType.SOCIAL_COMMUNICATION,
-      ringDuration: 5
-    };
-    reminderAgentManager.publishReminder(req).then((id: number): void => {
-      this.remindId = id;
-      this.saveRemind();
-    }).catch((err: BusinessError): void => {
-      hilog.error(0x1000, 'StudyPlan', '发布提醒失败 code=%{public}d msg=%{public}s', err.code, err.message);
-    });
+    const ctx = getContext(this) as common.UIAbilityContext;
+    publishDailyReminder(ctx, this.remindHour, this.remindMinute)
+      .then((id: number): void => {
+        this.remindId = id;
+        this.saveRemind();
+      })
+      .catch((): void => {
+        // 失败日志已在 ReminderHelper（tag=ReminderHelper）输出，此处不重复
+      });
   }
 
   // 取消已发布的代理提醒
@@ -371,63 +431,69 @@ struct StudyPlan {
     .backgroundColor($r('app.color.background'))
   }
 
-  // 倒计时卡片
+  // 倒计时卡片：渐变 banner，白色大字，视觉焦点
   @Builder buildCountdown() {
     Column() {
       if (this.daysLeft < 0) {
         Text('未设置考试日期')
           .fontSize(FONT.title)
           .fontWeight(FontWeight.Medium)
-          .fontColor($r('app.color.text_primary'))
+          .fontColor($r('app.color.on_primary'))
         Text('点击设置目标考试日，开启倒计时')
           .fontSize(FONT.caption)
-          .fontColor($r('app.color.text_secondary'))
+          .fontColor($r('app.color.on_primary'))
+          .opacity(0.85)
           .margin({ top: SPACE.xs })
       } else if (this.daysLeft === 0) {
         Text('就是今天！')
           .fontSize(FONT.display)
           .fontWeight(FontWeight.Bold)
-          .fontColor($r('app.color.brand'))
+          .fontColor($r('app.color.on_primary'))
         Text('稳住，你准备好了')
           .fontSize(FONT.caption)
-          .fontColor($r('app.color.text_secondary'))
+          .fontColor($r('app.color.on_primary'))
+          .opacity(0.85)
           .margin({ top: SPACE.xs })
       } else if (this.daysLeft > 0) {
         Row() {
           Text(`${this.daysLeft}`)
-            .fontSize(48)
+            .fontSize(56)
             .fontWeight(FontWeight.Bold)
-            .fontColor($r('app.color.brand'))
+            .fontColor($r('app.color.on_primary'))
           Text('天')
             .fontSize(FONT.body)
-            .fontColor($r('app.color.text_secondary'))
-            .margin({ left: SPACE.xs, top: SPACE.sm })
+            .fontColor($r('app.color.on_primary'))
+            .opacity(0.85)
+            .margin({ left: SPACE.sm, top: SPACE.sm })
         }
         Text(`距离考试（${this.examDateStr}）`)
           .fontSize(FONT.caption)
-          .fontColor($r('app.color.text_secondary'))
+          .fontColor($r('app.color.on_primary'))
+          .opacity(0.85)
           .margin({ top: SPACE.sm })
       } else {
         Text('考试已结束')
           .fontSize(FONT.title)
           .fontWeight(FontWeight.Medium)
-          .fontColor($r('app.color.text_tertiary'))
+          .fontColor($r('app.color.on_primary'))
         Text(`考试日 ${this.examDateStr}`)
           .fontSize(FONT.caption)
-          .fontColor($r('app.color.text_secondary'))
+          .fontColor($r('app.color.on_primary'))
+          .opacity(0.85)
           .margin({ top: SPACE.xs })
       }
 
       if (this.examDateStr) {
         Text('点击卡片可切换考试日期')
           .fontSize(FONT.mini)
-          .fontColor($r('app.color.text_tertiary'))
+          .fontColor($r('app.color.on_primary'))
+          .opacity(0.7)
           .margin({ top: SPACE.md })
       }
     }
     .width('100%')
     .padding(SPACE.xl)
-    .backgroundColor($r('app.color.surface'))
+    .linearGradient({ angle: 135, colors: [[$r('app.color.brand'), 0], [$r('app.color.brand_dark'), 1]] })
     .borderRadius(RADIUS.lg)
     .alignItems(HorizontalAlign.Center)
     .margin({ bottom: SPACE.lg })
@@ -436,91 +502,93 @@ struct StudyPlan {
 
   // 每日提醒卡片
   @Builder buildRemind() {
-    Column() {
-      Row() {
-        Column() {
-          Text('每日备考提醒')
-            .fontSize(FONT.body)
-            .fontWeight(FontWeight.Medium)
-            .fontColor($r('app.color.text_primary'))
-          Text(this.remindOn
-            ? `每天 ${this.fmt2(this.remindHour)}:${this.fmt2(this.remindMinute)} 推送`
-            : '开启后每天定时推送今日素材/知识/套题')
-            .fontSize(FONT.caption)
-            .fontColor($r('app.color.text_secondary'))
-            .margin({ top: SPACE.xs })
-        }
-        .layoutWeight(1)
-        .alignItems(HorizontalAlign.Start)
-
-        if (this.remindOn) {
-          Text(`${this.fmt2(this.remindHour)}:${this.fmt2(this.remindMinute)}`)
-            .fontSize(FONT.body)
-            .fontColor($r('app.color.brand'))
-            .margin({ right: SPACE.sm })
-            .onClick(() => this.onPickTime())
-        } else {
-          Text('设置时间')
-            .fontSize(FONT.caption)
-            .fontColor($r('app.color.brand'))
-            .margin({ right: SPACE.sm })
-            .onClick(() => this.onPickTime())
-        }
-
-        Toggle({ type: ToggleType.Switch, isOn: this.remindOn })
-          .onChange((isOn: boolean): void => {
-            this.onToggleRemind(isOn);
-          })
+    Row() {
+      IconTile({ emoji: '🔔', bg: $r('app.color.accent_soft'), fg: $r('app.color.accent'), dim: 42 })
+        .margin({ right: SPACE.md })
+      Column() {
+        Text('每日备考提醒')
+          .fontSize(FONT.body)
+          .fontWeight(FontWeight.Medium)
+          .fontColor($r('app.color.text_primary'))
+        Text(this.remindOn
+          ? `每天 ${this.fmt2(this.remindHour)}:${this.fmt2(this.remindMinute)} 推送今日素材`
+          : '开启后每天定时推送今日素材/知识/套题')
+          .fontSize(FONT.caption)
+          .fontColor($r('app.color.text_secondary'))
+          .margin({ top: SPACE.xs })
       }
-      .width('100%')
-      .alignItems(VerticalAlign.Center)
+      .layoutWeight(1)
+      .alignItems(HorizontalAlign.Start)
+
+      if (this.remindOn) {
+        Text(`${this.fmt2(this.remindHour)}:${this.fmt2(this.remindMinute)}`)
+          .fontSize(FONT.body)
+          .fontColor($r('app.color.brand'))
+          .margin({ right: SPACE.sm })
+          .onClick(() => this.onPickTime())
+      } else {
+        Text('设置时间')
+          .fontSize(FONT.caption)
+          .fontColor($r('app.color.brand'))
+          .margin({ right: SPACE.sm })
+          .onClick(() => this.onPickTime())
+      }
+
+      Toggle({ type: ToggleType.Switch, isOn: this.remindOn })
+        .onChange((isOn: boolean): void => {
+          this.onToggleRemind(isOn);
+        })
     }
     .width('100%')
     .padding(SPACE.lg)
     .backgroundColor($r('app.color.surface'))
     .borderRadius(RADIUS.lg)
+    .alignItems(VerticalAlign.Center)
+    .shadow({ radius: 10, color: $r('app.color.card_stroke'), offsetY: 2 })
     .margin({ bottom: SPACE.lg })
   }
 
   // 今日备考内容
   @Builder buildToday() {
     Column() {
-      Text('今日备考')
-        .fontSize(FONT.title)
-        .fontWeight(FontWeight.Medium)
-        .fontColor($r('app.color.text_title'))
-        .width('100%')
+      SectionTitle({ title: '今日备考', sub: '每天轮换，循序渐进' })
         .margin({ bottom: SPACE.sm })
 
       if (this.today) {
-        this.todayCard('今日素材', this.today.mat.title, this.today.mat.summary)
-        this.todayCard('今日知识', this.today.know.title, this.today.know.summary)
+        this.todayCard('📄', '今日素材', this.today.mat.id, this.today.mat.title, this.today.mat.summary)
+        this.todayCard('🧠', '今日知识', this.today.know.id, this.today.know.title, this.today.know.summary)
         // 今日套题
-        Column() {
-          Text('今日套题演练')
-            .fontSize(FONT.body)
-            .fontWeight(FontWeight.Medium)
-            .fontColor($r('app.color.text_primary'))
-          Text(this.today.set.title)
-            .fontSize(FONT.caption)
-            .fontColor($r('app.color.text_secondary'))
-            .margin({ top: SPACE.xs })
-          Button('开始演练')
-            .width('100%')
-            .height(40)
+        Row() {
+          IconTile({ emoji: '📝', bg: $r('app.color.brand_light'), fg: $r('app.color.brand'), dim: 42 })
+            .margin({ right: SPACE.md })
+          Column() {
+            Text('今日套题演练')
+              .fontSize(FONT.body)
+              .fontWeight(FontWeight.Medium)
+              .fontColor($r('app.color.text_primary'))
+            Text(this.today.set.title)
+              .fontSize(FONT.caption)
+              .fontColor($r('app.color.text_secondary'))
+              .margin({ top: SPACE.xs })
+          }
+          .layoutWeight(1)
+          .alignItems(HorizontalAlign.Start)
+          Button('开始')
+            .height(36)
             .fontSize(FONT.bodySm)
             .backgroundColor($r('app.color.brand'))
             .fontColor($r('app.color.on_primary'))
             .borderRadius(RADIUS.pill)
-            .margin({ top: SPACE.sm })
             .onClick(() => {
-              router.pushUrl({ url: 'pages/Practice', params: { setId: this.today?.set?.id ?? 0 } });
+              router.pushUrl({ url: 'pages/Practice', params: { setId: this.today?.set?.id ?? '' } });
             })
         }
         .width('100%')
-        .padding(SPACE.md)
+        .padding(SPACE.lg)
         .backgroundColor($r('app.color.surface'))
-        .borderRadius(RADIUS.sm)
+        .borderRadius(RADIUS.md)
+        .alignItems(VerticalAlign.Center)
+        .shadow({ radius: 10, color: $r('app.color.card_stroke'), offsetY: 2 })
         .margin({ bottom: SPACE.sm })
       } else {
         Text('暂无可用素材/套题')
@@ -532,43 +600,59 @@ struct StudyPlan {
     .margin({ bottom: SPACE.lg })
   }
 
-  // 今日素材/知识卡片
-  @Builder todayCard(tag: string, title: string, desc: string) {
-    Column() {
-      Text(tag)
-        .fontSize(FONT.body)
-        .fontWeight(FontWeight.Medium)
-        .fontColor($r('app.color.text_primary'))
-      Text(title)
-        .fontSize(FONT.caption)
-        .fontColor($r('app.color.text_secondary'))
-        .margin({ top: SPACE.xs })
-      Text(desc)
-        .fontSize(FONT.mini)
-        .fontColor($r('app.color.text_tertiary'))
-        .margin({ top: SPACE.xs })
-        .maxLines(2)
-        .textOverflow({ overflow: TextOverflow.Ellipsis })
+  // 今日素材/知识卡片（可点击跳详情）
+  @Builder todayCard(emoji: string, tag: string, id: string, title: string, desc: string) {
+    Row() {
+      IconTile({ emoji: emoji, bg: $r('app.color.brand_light'), fg: $r('app.color.brand'), dim: 42 })
+        .margin({ right: SPACE.md })
+      Column() {
+        Text(tag)
+          .fontSize(FONT.body)
+          .fontWeight(FontWeight.Medium)
+          .fontColor($r('app.color.text_primary'))
+        Text(title)
+          .fontSize(FONT.caption)
+          .fontColor($r('app.color.text_secondary'))
+          .margin({ top: SPACE.xs })
+        Text(desc)
+          .fontSize(FONT.mini)
+          .fontColor($r('app.color.text_tertiary'))
+          .margin({ top: SPACE.xs })
+          .maxLines(2)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+        Text('查看 ›')
+          .fontSize(FONT.mini)
+          .fontColor($r('app.color.brand'))
+          .margin({ top: SPACE.xs })
+      }
+      .layoutWeight(1)
+      .alignItems(HorizontalAlign.Start)
     }
     .width('100%')
-    .padding(SPACE.md)
+    .padding(SPACE.lg)
     .backgroundColor($r('app.color.surface'))
-    .borderRadius(RADIUS.sm)
+    .borderRadius(RADIUS.md)
     .margin({ bottom: SPACE.sm })
+    .shadow({ radius: 10, color: $r('app.color.card_stroke'), offsetY: 2 })
+    .onClick(() => {
+      router.pushUrl({ url: 'pages/Detail', params: { id: id, kind: 'article' } });
+    })
+    .stateStyles({
+      pressed: {
+        .backgroundColor($r('app.color.tag_bg'))   // 按压反馈，提示可点
+      }
+    })
   }
 
   // 复习任务清单
   @Builder buildTaskList() {
     Column() {
       Row() {
-        Text('复习任务清单')
-          .fontSize(FONT.title)
-          .fontWeight(FontWeight.Medium)
-          .fontColor($r('app.color.text_title'))
-          .layoutWeight(1)
-        Text(`已完成 ${this.doneCount()}/${this.tasks.length}`)
-          .fontSize(FONT.caption)
-          .fontColor($r('app.color.text_secondary'))
+        SectionTitle({ title: '复习任务清单' }) {
+          Text(`已完成 ${this.doneCount()}/${this.tasks.length}`)
+            .fontSize(FONT.caption)
+            .fontColor($r('app.color.text_secondary'))
+        }
       }
       .width('100%')
       .margin({ bottom: SPACE.sm })
@@ -606,6 +690,7 @@ struct StudyPlan {
         .backgroundColor($r('app.color.surface'))
         .borderRadius(RADIUS.sm)
         .margin({ bottom: SPACE.xs })
+        .shadow({ radius: 6, color: $r('app.color.card_stroke'), offsetY: 1 })
       }, (t: StudyTask) => t.id)
 
       // 添加自定义任务

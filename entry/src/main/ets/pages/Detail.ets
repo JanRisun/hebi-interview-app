@@ -7,6 +7,8 @@ import { UserTagStore } from '../utils/UserTagStore';
 import { RecorderBar } from '../utils/RecorderBar';
 import { TtsButton } from '../utils/TtsButton';
 import { TtsFloatButton } from '../utils/TtsFloatButton';
+import { BackHeader } from '../utils/BackHeader';
+import { SectionTitle, TagChip } from '../utils/Ui';
 import { FONT, RADIUS, SPACE } from '../utils/Theme';
 
 // 预设快捷标记（点击切换：未加→添加，已加→移除）
@@ -67,15 +69,10 @@ struct Detail {
     this.customInput = '';
   }
 
-  // 我的标记管理区：当前标签(点按移除) + 预设快捷 + 自定义输入
+  // 我的标记管理区：当前标签(点按移除) + 预设快捷 + 自定义输入（卡片化）
   @Builder userTagSection() {
     Column() {
-      Text('我的标记')
-        .fontSize(FONT.body)
-        .fontWeight(FontWeight.Bold)
-        .fontColor($r('app.color.text_title'))
-        .alignSelf(ItemAlign.Start)
-        .margin({ bottom: SPACE.xs })
+      SectionTitle({ title: '我的标记' })
 
       // 已添加的标签：点击移除
       if (this.userTags.length > 0) {
@@ -100,7 +97,7 @@ struct Detail {
         .width('100%')
         .margin({ bottom: SPACE.xs })
       } else {
-          Text('尚未标记，点击下方快速添加')
+        Text('尚未标记，点击下方快速添加')
           .fontSize(FONT.caption)
           .fontColor($r('app.color.text_tertiary'))
           .alignSelf(ItemAlign.Start)
@@ -110,14 +107,8 @@ struct Detail {
       // 预设快捷标签：点击切换
       Flex({ wrap: FlexWrap.Wrap }) {
         ForEach(PRESET_TAGS, (p: string) => {
-          Text(p)
-            .fontSize(FONT.caption)
-            .fontColor(this.userTags.includes(p) ? $r('app.color.on_primary') : $r('app.color.brand'))
-            .backgroundColor(this.userTags.includes(p) ? $r('app.color.brand') : $r('app.color.tag_bg'))
-            .borderRadius(RADIUS.sm)
-            .padding({ left: SPACE.sm, right: SPACE.sm, top: SPACE.xs, bottom: SPACE.xs })
+          TagChip({ text: p, selected: this.userTags.includes(p), onTap: () => { this.togglePreset(p); } })
             .margin({ top: SPACE.xs, right: SPACE.xs })
-            .onClick(() => this.togglePreset(p))
         }, (p: string) => p)
       }
       .width('100%')
@@ -144,6 +135,10 @@ struct Detail {
       .margin({ bottom: SPACE.md })
     }
     .width('100%')
+    .padding(SPACE.lg)
+    .backgroundColor($r('app.color.surface'))
+    .borderRadius(RADIUS.lg)
+    .shadow({ radius: 10, color: $r('app.color.card_stroke'), offsetY: 2 })
     .alignItems(HorizontalAlign.Start)
   }
 
@@ -176,8 +171,6 @@ struct Detail {
           .margin({ bottom: SPACE.md })
         }
         // 语音播报：整篇知识点（标题 + 各小节标题与正文）
-        // 用 Row 包裹：Column 中子项默认被拉伸成满宽，会变成左侧孤字、右侧大片空白的「空条」，
-        // 包一层 Row（默认按内容宽度自适应）即可让按钮收缩为紧凑药丸。
         Row() {
           TtsButton({
             text: this.article!.title + '。' +
@@ -256,11 +249,8 @@ struct Detail {
         .margin({ bottom: SPACE.md })
         // 我的标记（用户自定义标签，持久化）
         this.userTagSection()
-        Text('【题目】')
-          .fontSize(FONT.body)
-          .fontWeight(FontWeight.Medium)
-          .fontColor($r('app.color.brand'))
-          .margin({ bottom: SPACE.xs })
+        SectionTitle({ title: '题目' })
+          .margin({ top: SPACE.sm, bottom: SPACE.xs })
         Text(this.question!.prompt)
           .fontSize(FONT.bodySm)
           .fontColor($r('app.color.text_body'))
@@ -270,18 +260,12 @@ struct Detail {
         RecorderBar({ qid: this.itemId })
         if (this.showAnswer) {
           Row() {
-            Text('【参考答案 · 逐字稿】')
-              .fontSize(FONT.body)
-              .fontWeight(FontWeight.Medium)
-              .fontColor($r('app.color.brand'))
-              .layoutWeight(1)   // 空间不足时标题收缩，把位置让给右侧朗读按钮
-              .maxLines(1)
-              .textOverflow({ overflow: TextOverflow.Ellipsis })
-            TtsButton({ text: this.question!.answerScript, label: '朗读解析' })
-              .margin({ left: SPACE.md })
-              .flexShrink(0)   // 不被压缩，保证按钮始终有完整宽度显示文字
+            SectionTitle({ title: '参考答案 · 逐字稿' }) {
+              TtsButton({ text: this.question!.answerScript, label: '朗读解析' })
+            }
           }
-          .margin({ bottom: SPACE.xs })
+          .width('100%')
+          .margin({ top: SPACE.sm, bottom: SPACE.xs })
           Text(this.question!.answerScript)
             .fontSize(FONT.bodySm)
             .fontColor($r('app.color.text_body'))
@@ -309,19 +293,15 @@ struct Detail {
     Stack({ alignContent: Alignment.BottomStart }) {
       // 底层：页面内容
       Column() {
-        Row() {
-          Text('‹ 返回')
-            .fontSize(FONT.body)
-            .fontColor($r('app.color.brand'))
-            .onClick(() => router.back())
-          Text(this.fav ? '★ 已收藏' : '☆ 收藏')
-            .fontSize(FONT.bodySm)
-            .fontColor(this.fav ? $r('app.color.favorite') : $r('app.color.text_secondary'))
-            .onClick(() => this.toggleFav())
+        BackHeader({ title: this.kind === 'article' ? '知识点' : '真题详情' }) {
+          Row() {
+            Text(this.fav ? '★' : '☆')
+              .fontSize(FONT.title)
+              .fontColor(this.fav ? $r('app.color.favorite') : $r('app.color.text_tertiary'))
+          }
+          .padding({ left: SPACE.md, right: SPACE.sm })
+          .onClick(() => this.toggleFav())
         }
-        .width('92%')
-        .margin({ top: SPACE.md, bottom: SPACE.sm })
-        .justifyContent(FlexAlign.SpaceBetween)
 
         if (this.article) {
           this.articleView()

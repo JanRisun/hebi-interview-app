@@ -6,8 +6,9 @@ import { common } from '@kit.AbilityKit';
 import { DataStore } from '../model/DataStore';
 import { AppData, Question, MockSet, PracticeSession } from '../model/Types';
 import { preferences } from '@kit.ArkData';
-import { RADIUS } from '../utils/Theme';
+import { RADIUS, SPACE } from '../utils/Theme';
 import { RecorderBar } from '../utils/RecorderBar';
+import { PageHero, IconTile, SectionTitle } from '../utils/Ui';
 import { fileIo } from '@kit.CoreFileKit';
 import { vibrator } from '@kit.SensorServiceKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
@@ -15,6 +16,7 @@ import { BusinessError } from '@kit.BasicServicesKit';
 
 const PREF_NAME: string = 'practice';
 
+@Entry
 @Component
 export struct PracticeView {
   @State data: AppData | null = null;
@@ -23,6 +25,7 @@ export struct PracticeView {
   @State curSet: MockSet | null = null;
   @State qList: Question[] = [];
   @State idx: number = 0;
+  @State curQ: Question | null = null;   // 缓存当前题引用：避免在 getter 内反复索引 @State 数组（ArkUI ObservedArray 在 getter 上下文易返回 undefined→NaN）
   @State elapsed: number = 0;                 // 整卷总用时（秒，正计时，含超时）
   @State stage: 'think' | 'speak' = 'think'; // 当前分段：思考中 / 作答中
   @State remain: number = 30;                 // 当前分段剩余秒数（作答超时后变负，用于显示「超时 Xs」）
@@ -33,9 +36,9 @@ export struct PracticeView {
   private pref: preferences.Preferences | null = null;
   private timer: number = 0;
 
-  // 当前题 id（getter，便于笔记/自评绑定）
+  // 当前题 id（getter，便于笔记/自评绑定）；读 curQ 避免 getter 内索引 @State 数组
   get curId(): string {
-    return this.qList[this.idx] ? this.qList[this.idx].id : '';
+    return this.curQ ? this.curQ.id : '';
   }
 
   // 本套建议总时长（秒）：思考+作答；无数据则兜底 10 分钟
@@ -46,17 +49,18 @@ export struct PracticeView {
     return t > 0 ? t : 600;
   }
 
-  // 当前题思考时长（秒）：套题有则用之，无则默认 30
+  // 当前题思考时长（秒）：取当前这一题自己的 thinkTime，无则默认 30
+  // 注意：套题的 totalThink 是整卷所有题之和，绝不能当单题倒计时用
   get thinkSec(): number {
-    const s: MockSet | null = this.curSet;
-    const v: number = (s && typeof s.totalThink === 'number' && s.totalThink > 0) ? s.totalThink : 30;
+    const q: Question | null = this.curQ;
+    const v: number = (q && typeof q.thinkTime === 'number' && q.thinkTime > 0) ? q.thinkTime : 30;
     return Number.isFinite(v) ? v : 30;
   }
 
-  // 当前题作答时长（秒）：套题有则用之，无则默认 150（2分30秒）
+  // 当前题作答时长（秒）：取当前这一题自己的 speakTime，无则默认 150（2分30秒）
   get speakSec(): number {
-    const s: MockSet | null = this.curSet;
-    const v: number = (s && typeof s.totalSpeak === 'number' && s.totalSpeak > 0) ? s.totalSpeak : 150;
+    const q: Question | null = this.curQ;
+    const v: number = (q && typeof q.speakTime === 'number' && q.speakTime > 0) ? q.speakTime : 150;
     return Number.isFinite(v) ? v : 150;
   }
 
@@ -109,9 +113,34 @@ export struct PracticeView {
 
   private clearTimer(): void {
     if (this.timer !== 0) {
-      clearInterval(this.timer);
+      clearTimeout(this.timer);
       this.timer = 0;
     }
+  }
+
+  // 递归 setTimeout 计时主循环：每秒一跳、独立调度，比 setInterval 更稳（规避任何潜在丢失/只触发一次）
+  private tick(): void {
+    try {
+      this.elapsed++;          // 整卷总用时累加（含超时）
+      this.remain--;          // 当前分段倒计时
+      hilog.info(0x1000, 'Practice', 'tick elapsed=%{public}d remain=%{public}d stage=%{public}s',
+        this.elapsed, this.remain, this.stage);
+      if (this.remain <= 0) {
+        if (this.stage === 'think') {
+          // 思考结束 → 进入作答，重置分段计时并响提示音
+          this.stage = 'speak';
+          this.remain = this.speakSec;   // 当前题作答时长（curQ 已缓存，安全，不走整卷值）
+          this.beep('start');
+        } else if (this.remain === 0) {
+          // 作答时间刚到 → 响提示音（不强制跳题，给用户缓冲；remain 继续变负显示超时）
+          this.beep('timeout');
+        }
+      }
+    } catch (e) {
+      hilog.error(0x1000, 'Practice', 'tick 异常 %{public}s', JSON.stringify(e));
+    }
+    // 无论本跳是否异常，都调度下一跳（1 秒后）
+    this.timer = setTimeout((): void => { this.tick(); }, 1000);
   }
 
   // 读该题的本地语音识别转写（RecorderBar 存的 rec_<id>.txt）
@@ -125,39 +154,22 @@ export struct PracticeView {
   }
 
   // 分段计时主循环：思考→作答倒计时 → 超时继续计（振动提示）
-  // 重要：初始值全部用本地变量算好再赋 @State，避免 getter 时序/NaN 问题
+  // 采用递归 setTimeout（每跳独立调度），真机/模拟器均稳定；curQ 已缓存当前题，getter 安全
   startTimer(): void {
+    hilog.info(0x1000, 'Practice', 'startTimer 调用 thinkSec=%{public}d speakSec=%{public}d curQ=%{public}s',
+      this.thinkSec, this.speakSec, this.curQ ? this.curQ.id : 'null');
     this.clearTimer();
-    const s: MockSet | null = this.curSet;
-    // 从 curSet 读时长，三层兜底确保永远不是 NaN/0/负数
-    const tThink: number = (s && typeof s.totalThink === 'number' && s.totalThink > 0) ? s.totalThink : 30;
-    const tSpeak: number = (s && typeof s.totalSpeak === 'number' && s.totalSpeak > 0) ? s.totalSpeak : 150;
-
     this.timerStarted = true;          // 标记：用户已开始答题，UI 从待机态切到倒计
     this.stage = 'think';
-    this.remain = tThink;             // 用本地变量（已保证有效），不走 getter
-    this.timer = setInterval((): void => {
-      this.elapsed++;          // 整卷总用时累加（含超时）
-      this.remain--;          // 当前分段倒计时
-      if (this.remain <= 0) {
-        if (this.stage === 'think') {
-          // 思考结束 → 进入作答，重置分段计时并响提示音
-          this.stage = 'speak';
-          this.remain = tSpeak;       // 用闭包捕获的本地变量，不走 getter
-          this.beep('start');
-        } else if (this.remain === 0) {
-          // 作答时间刚到 → 响提示音（不强制跳题，给用户缓冲；remain 继续变负显示超时）
-          this.beep('timeout');
-        }
-      }
-    }, 1000);
+    this.remain = this.thinkSec;      // 当前题单题思考时长（非整卷 totalThink）
+    // 1 秒后启动第一跳，之后由 tick() 自行递归调度
+    this.timer = setTimeout((): void => { this.tick(); }, 1000);
   }
 
-  // 切到下一题时重置分段计时（整卷 elapsed 不清零，timerStarted 保持）
+  // 切到下一题/上一题时重置为当前题单题思考倒计时（整卷 elapsed 不清零，timerStarted 保持）
   private resetStage(): void {
     this.stage = 'think';
-    const s: MockSet | null = this.curSet;
-    this.remain = (s && typeof s.totalThink === 'number' && s.totalThink > 0) ? s.totalThink : 30;
+    this.remain = this.thinkSec;   // 当前题单题思考时长，随题目切换而清零
   }
 
   // 时间节点提示：用振动（马达）提醒考生 —— 思考结束切作答、作答超时
@@ -187,20 +199,24 @@ export struct PracticeView {
   }
 
   startSet(s: MockSet): void {
+    this.clearTimer();                  // 切入新套题先清旧 timer，避免倒计时泄漏
     const qs: Question[] = DataStore.questionsOfSet(s.id);
     if (qs.length === 0) return;
     this.curSet = s;
     this.qList = qs;
     this.idx = 0;
+    this.curQ = qs[0];                  // 缓存当前题引用
     this.elapsed = 0;
     this.timerStarted = false;          // 待机态：用户需手动点「开始答题」才启动倒计
-    this.remain = (s && typeof s.totalThink === 'number' && s.totalThink > 0) ? s.totalThink : 30;
+    this.stage = 'think';
+    this.remain = this.thinkSec;        // 第 1 题单题思考时长（非整卷 totalThink）
     this.phase = 'exam';
     // 不再自动 startTimer()——等用户点「开始答题」按钮
   }
 
   // 随机单题自测（保留 Tier A 能力）：合成一个虚拟套题
   startSingle(): void {
+    this.clearTimer();                  // 切入新题先清旧 timer
     const all: Question[] = (this.data ? this.data.questions : []);
     if (all.length === 0) return;
     const q: Question = all[Math.floor(Math.random() * all.length)];
@@ -215,9 +231,11 @@ export struct PracticeView {
     this.curSet = fake;
     this.qList = [q];
     this.idx = 0;
+    this.curQ = q;                      // 缓存当前题引用
     this.elapsed = 0;
     this.timerStarted = false;          // 待机态
-    this.remain = (fake && typeof fake.totalThink === 'number' && fake.totalThink > 0) ? fake.totalThink : 30;
+    this.stage = 'think';
+    this.remain = this.thinkSec;        // 单题思考时长
     this.phase = 'exam';
     // 不再自动 startTimer()——等用户点「开始答题」按钮
   }
@@ -225,9 +243,19 @@ export struct PracticeView {
   next(): void {
     if (this.idx < this.qList.length - 1) {
       this.idx++;
+      this.curQ = this.qList[this.idx];   // 同步当前题引用
       this.resetStage();   // 新题：重置为「思考中」倒计时
     } else {
       this.submit();
+    }
+  }
+
+  // 回上一题：idx>0 时可回退，同样重置当前题分段计时
+  prev(): void {
+    if (this.idx > 0) {
+      this.idx--;
+      this.curQ = this.qList[this.idx];   // 同步当前题引用
+      this.resetStage();   // 回到上题：重置为「思考中」倒计时
     }
   }
 
@@ -243,6 +271,7 @@ export struct PracticeView {
     this.phase = 'select';
     this.curSet = null;
     this.qList = [];
+    this.curQ = null;
     this.idx = 0;
     this.elapsed = 0;
   }
@@ -342,6 +371,10 @@ export struct PracticeView {
     this.next();
   }
 
+  private onPrev(): void {
+    this.prev();
+  }
+
   private onSubmit(): void {
     this.submit();
   }
@@ -382,6 +415,8 @@ export struct PracticeView {
   // 选套列表
   @Builder setItem(s: MockSet) {
     Row() {
+      IconTile({ emoji: '📝', bg: $r('app.color.brand_light'), fg: $r('app.color.brand'), dim: 42 })
+        .margin({ right: 12 })
       Column() {
         Text(s.title)
           .fontSize(15)
@@ -418,34 +453,36 @@ export struct PracticeView {
   build() {
     Column() {
       if (this.phase === 'select') {
-        // 顶部统计
+        // 品牌头部
+        PageHero({ emoji: '📝', title: '真题模考', subtitle: '选套限时连做，考完复盘自评' })
+        // 统计
         if (this.data) {
-          Text(`真题模考 · 共 ${this.sets.length} 套（含 25 套强化训练 + 7 套历年真题）`)
+          Text(`共 ${this.sets.length} 套 · 强化训练 + 历年真题`)
             .fontSize(13)
-            .fontColor($r('app.color.brand'))
-            .margin({ top: 16, bottom: 6 })
+            .fontColor($r('app.color.text_secondary'))
+            .margin({ top: SPACE.md, bottom: SPACE.xs })
         }
         // 顶部搜索框（搜真题 / 来源）
-        TextInput({ placeholder: '搜索套题 / 来源，如：套题1、浚县', text: this.kw })
+        TextInput({ placeholder: '搜索套题 / 来源，如：套题1、真题', text: this.kw })
           .width('92%')
-          .height(38)
+          .height(40)
           .fontSize(14)
           .backgroundColor($r('app.color.surface'))
           .borderRadius(RADIUS.pill)
           .padding({ left: 14 })
-          .margin({ top: 4, bottom: 10 })
+          .margin({ top: SPACE.sm, bottom: SPACE.sm })
           .onChange((v: string) => {
             this.kw = v;
           })
         // 随机单题入口
         Button('随机单题自测（快速热身）')
           .width('92%')
-          .height(40)
+          .height(42)
           .fontSize(14)
           .backgroundColor($r('app.color.brand'))
           .fontColor($r('app.color.on_primary'))
           .borderRadius(RADIUS.pill)
-          .margin({ bottom: 12 })
+          .margin({ bottom: SPACE.md })
           .onClick(() => this.onStartSingle())
         // 套题列表（受搜索过滤）
         List() {
@@ -510,7 +547,11 @@ export struct PracticeView {
             }
           }
           .width('92%')
-          .margin({ top: 14, bottom: 10 })
+          .padding({ left: SPACE.lg, right: SPACE.lg, top: SPACE.sm, bottom: SPACE.sm })
+          .backgroundColor($r('app.color.surface'))
+          .borderRadius(RADIUS.md)
+          .shadow({ radius: 10, color: $r('app.color.card_stroke'), offsetY: 2 })
+          .margin({ top: SPACE.md, bottom: SPACE.md })
 
           // 分段计时说明：本题思考→作答节奏提示
           Row({ space: 8 }) {
@@ -539,15 +580,17 @@ export struct PracticeView {
           Scroll() {
             Column() {
               if (this.qList[this.idx]) {
-                Text('【题目】')
-                  .fontSize(15)
-                  .fontWeight(FontWeight.Medium)
-                  .fontColor($r('app.color.brand'))
-                  .margin({ bottom: 6 })
+                SectionTitle({ title: '题目' })
+                  .margin({ bottom: SPACE.sm })
                 Text(this.qList[this.idx].prompt)
                   .fontSize(16)
                   .fontColor($r('app.color.text_primary'))
                   .lineHeight(26)
+                  .width('100%')
+                  .padding(SPACE.lg)
+                  .backgroundColor($r('app.color.surface'))
+                  .borderRadius(RADIUS.md)
+                  .shadow({ radius: 10, color: $r('app.color.card_stroke'), offsetY: 2 })
 
                 // 开口自测：录音 + 回放 + 计时（按当前题 id 存本机）
                 RecorderBar({ qid: this.curId })
@@ -575,15 +618,28 @@ export struct PracticeView {
           .layoutWeight(1)
           .width('100%')
 
-          Button(this.idx < this.qList.length - 1 ? '下一题' : '交卷，看参考答案')
-            .width('92%')
-            .height(46)
-            .fontSize(16)
-            .backgroundColor($r('app.color.brand'))
-            .fontColor($r('app.color.on_primary'))
-            .borderRadius(RADIUS.pill)
-            .margin({ bottom: 16 })
-            .onClick(() => this.onNext())
+          // 底部导航：上一题（idx>0 可用，否则置灰禁用）+ 下一题/交卷
+          Row({ space: 12 }) {
+            Button('上一题')
+              .layoutWeight(1)
+              .height(46)
+              .fontSize(16)
+              .backgroundColor(this.idx > 0 ? $r('app.color.surface_variant') : $r('app.color.surface'))
+              .fontColor(this.idx > 0 ? $r('app.color.brand') : $r('app.color.text_tertiary'))
+              .borderRadius(RADIUS.pill)
+              .enabled(this.idx > 0)
+              .onClick(() => this.onPrev())
+            Button(this.idx < this.qList.length - 1 ? '下一题' : '交卷，看参考答案')
+              .layoutWeight(1)
+              .height(46)
+              .fontSize(16)
+              .backgroundColor($r('app.color.brand'))
+              .fontColor($r('app.color.on_primary'))
+              .borderRadius(RADIUS.pill)
+              .onClick(() => this.onNext())
+          }
+          .width('92%')
+          .margin({ bottom: 16 })
         }
         .width('100%')
         .height('100%')
@@ -650,11 +706,8 @@ export struct PracticeView {
                       .margin({ bottom: 8 })
                   }
 
-                  Text('【参考答案 · 逐字稿】')
-                    .fontSize(14)
-                    .fontWeight(FontWeight.Medium)
-                    .fontColor($r('app.color.brand'))
-                    .margin({ bottom: 4 })
+                  SectionTitle({ title: '参考答案 · 逐字稿' })
+                    .margin({ bottom: SPACE.xs })
                   Text(q.answerScript)
                     .fontSize(14)
                     .fontColor($r('app.color.text_body'))
@@ -810,6 +863,7 @@ export struct PracticeView {
     .padding(10)
     .backgroundColor($r('app.color.surface'))
     .borderRadius(RADIUS.md)
+    .shadow({ radius: 8, color: $r('app.color.card_stroke'), offsetY: 2 })
     .alignItems(HorizontalAlign.Center)
   }
 }

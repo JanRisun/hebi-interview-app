@@ -1,9 +1,10 @@
-import { AbilityConstant, UIAbility, Want, Configuration } from '@kit.AbilityKit';
+import { AbilityConstant, UIAbility, Want, Configuration, common } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { window } from '@kit.ArkUI';
 import { DataStore } from '../model/DataStore';
 import { FavStore } from '../utils/FavStore';
 import { UserTagStore } from '../utils/UserTagStore';
+import { ensureReminder } from '../utils/ReminderHelper';
 
 const DOMAIN: number = 0x0000;
 const TAG: string = 'InterviewPrep';
@@ -38,6 +39,12 @@ export default class EntryAbility extends UIAbility {
       launchTarget = want.parameters['target'] as string;
     }
     AppStorage.setOrCreate('launchTarget', launchTarget);
+  }
+
+  // App 回到前台（含冷启动后首次进入）兜底：若已开启每日提醒，按已保存时刻重新发布，
+  // 防止系统提醒服务重置/应用数据清理后任务丢失，导致不再弹通知。
+  onForeground(): void {
+    ensureReminder(this.context as common.UIAbilityContext);
   }
 
   onConfigurationUpdate(newConfig: Configuration): void {

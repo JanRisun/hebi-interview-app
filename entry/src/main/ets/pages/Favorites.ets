@@ -5,6 +5,7 @@ import { AppData, Article, Question } from '../model/Types';
 import { FavStore } from '../utils/FavStore';
 import { BackHeader } from '../utils/BackHeader';
 import { RADIUS } from '../utils/Theme';
+import { IconTile, EmptyState } from '../utils/Ui';
 
 interface FavItem {
   id: string;
@@ -58,7 +59,6 @@ struct Favorites {
 
   build() {
     Column() {
-      // 返回按钮 + 标题
       BackHeader({ title: '我的收藏' })
 
       // 搜索框
@@ -77,20 +77,21 @@ struct Favorites {
       .margin({ bottom: 10 })
 
       if (this.items.length === 0) {
-        Text('还没有收藏，去详情页点击 ☆ 收藏吧')
-          .fontSize(14)
-          .fontColor($r('app.color.text_secondary'))
-          .margin(40)
+        EmptyState({ emoji: '🤍', text: '还没有收藏，去详情页点击 ☆ 收藏吧' })
       } else if (this.filterFavs().length === 0) {
-        Text(`没有匹配「${this.kw}」的收藏`)
-          .fontSize(14)
-          .fontColor($r('app.color.text_secondary'))
-          .margin(40)
+        EmptyState({ emoji: '🔍', text: `没有匹配「${this.kw}」的收藏` })
       } else {
         List() {
           ForEach(this.filterFavs(), (it: FavItem) => {
             ListItem() {
               Row() {
+                IconTile({
+                  emoji: it.kind === 'article' ? '📖' : '❓',
+                  bg: it.kind === 'article' ? $r('app.color.brand_light') : $r('app.color.accent_soft'),
+                  fg: it.kind === 'article' ? $r('app.color.brand') : $r('app.color.accent'),
+                  dim: 40
+                })
+                  .margin({ right: 12 })
                 Column() {
                   Text(it.title)
                     .fontSize(15)
@@ -113,6 +114,7 @@ struct Favorites {
               .backgroundColor($r('app.color.surface'))
               .borderRadius(RADIUS.md)
               .margin({ bottom: 8 })
+              .shadow({ radius: 10, color: $r('app.color.card_stroke'), offsetY: 2 })
               .onClick(() => router.pushUrl({ url: 'pages/Detail', params: { id: it.id, kind: it.kind } }))
             }
           }, (it: FavItem) => it.id)

@@ -21,7 +21,9 @@ export struct RecorderBar {
   @State permOk: boolean = false;     // 麦克风权限是否授权
   @State recording: boolean = false;   // 是否正在录音
   @State playing: boolean = false;     // 是否正在回放
+  @State paused: boolean = false;      // 是否暂停回放（可继续）
   @State sec: number = 0;            // 计时（秒）
+  @State recDuration: number = 0;     // 本次录音时长（秒），回放时作为计时上界
   @State hasFile: boolean = false;    // 该题目是否已有历史录音
   @State transcribing: boolean = false;   // 是否正在本地转写
   @State hasTranscript: boolean = false; // 该题目是否已有转写文本
@@ -32,7 +34,8 @@ export struct RecorderBar {
   private recFile: fileIo.File | undefined = undefined;
   private pcmOffset: number = 0;   // 已写入 PCM 字节数（WAV 头 44 字节之后）
   private playFile: fileIo.File | undefined = undefined;
-  private timer: number = 0;
+  private tickTimer: number = 0;       // 递归 setTimeout 句柄
+  private tickActive: boolean = false;   // 守护标志：stop 后置 false，防止回调再排下一跳
 
   // 录音文件路径：应用沙箱 filesDir/rec_<qid>.wav（OH Audio 直录 PCM 16k/单/16bit，对接 AsrHelper 的 WAV 头跳过逻辑）
   private filePath(): string {
@@ -81,9 +84,9 @@ export struct RecorderBar {
     this.transcribing = true;
     try {
       const text: string = await AsrHelper.transcribeFile(this.filePath());
-      this.transcriptText = text || '[未识别到文字]';
-      this.hasTranscript = text.length > 0;
       if (text.length > 0) {
+        this.transcriptText = text;
+        this.hasTranscript = true;
         try {
           const fd = fileIo.openSync(
             this.transcriptPath(),
@@ -92,10 +95,17 @@ export struct RecorderBar {
           fileIo.writeSync(fd.fd, text);
           fileIo.closeSync(fd.fd);
         } catch (e) { /* ignore */ }
+      } else {
+        // 引擎跑通但无文字（静音/非中文/离线模型精度有限），给出占位提示而非空白
+        this.transcriptText = '[未识别到文字，请确认录音有清晰人声]';
+        this.hasTranscript = true;
       }
     } catch (e) {
-      const err = e as BusinessError;
-      hilog.error(DOMAIN, TAG, 'transcribe fail: %{public}s', err.message);
+      const msg: string = (e as BusinessError)?.message || (e as Error)?.message || '未知错误';
+      hilog.error(DOMAIN, TAG, 'transcribe fail: %{public}s', msg);
+      // 把失败原因也展示在转写区，避免“点了没反应”的错觉
+      this.transcriptText = '转写失败：' + msg;
+      this.hasTranscript = true;
     } finally {
       this.transcribing = false;
     }
@@ -179,15 +189,30 @@ export struct RecorderBar {
     }
   }
 
-  private startTimer(): void {
-    this.clearTimer();
-    this.timer = setInterval((): void => { this.sec++; }, 1000);
+  // 统一计时：带守护标志的递归 setTimeout（比 setInterval 更稳，stop 后绝不再排下一跳，杜绝“清不掉/叠加”）
+  private startTick(kind: 'rec' | 'play'): void {
+    this.stopTick();
+    this.tickActive = true;
+    const loop = (): void => {
+      if (!this.tickActive) return;
+      this.sec++;
+      if (kind === 'play') {
+        const limit: number = this.recDuration > 0 ? this.recDuration : 600;  // 有界：录音多久回放就多久，兜底 10 分钟
+        if (this.sec >= limit) {
+          this.stopPlay();
+          return;
+        }
+      }
+      this.tickTimer = setTimeout(loop, 1000);
+    };
+    this.tickTimer = setTimeout(loop, 1000);
   }
 
-  private clearTimer(): void {
-    if (this.timer !== 0) {
-      clearInterval(this.timer);
-      this.timer = 0;
+  private stopTick(): void {
+    this.tickActive = false;
+    if (this.tickTimer !== 0) {
+      clearTimeout(this.tickTimer);
+      this.tickTimer = 0;
     }
   }
 
@@ -215,16 +240,28 @@ export struct RecorderBar {
       this.recFile = file;
       this.writeWavHeader(file.fd, 0);   // 占位头（dataSize=0），停止时回写真实值
       this.pcmOffset = 44;
+      let firstChunk: boolean = true;
       capturer.on('readData', (buffer: ArrayBuffer): void => {
         if (this.recFile) {
-          fileIo.writeSync(this.recFile.fd, buffer, { offset: this.pcmOffset, length: buffer.byteLength });
-          this.pcmOffset += buffer.byteLength;
+          try {
+            // 写整个 buffer，文件光标自动前移（writeSync 的 offset 在 ArrayBuffer 模式下是“源缓冲区内偏移”，不能当文件位置用）
+            const n: number = fileIo.writeSync(this.recFile.fd, buffer);
+            this.pcmOffset += n;   // 仅累计真实写入字节数，用于回写 WAV 头 dataSize
+            if (firstChunk) {
+              firstChunk = false;
+              hilog.info(DOMAIN, TAG, 'readData 首包 buffer=%{public}d 字节', buffer.byteLength);
+            }
+          } catch (err) {
+            const e2 = err as BusinessError;
+            hilog.error(DOMAIN, TAG, 'readData 写文件失败: %{public}s', e2.message);
+          }
         }
       });
       await capturer.start();
+      hilog.info(DOMAIN, TAG, 'capturer.start 成功，开始采集麦克风');
       this.recording = true;
       this.sec = 0;
-      this.startTimer();
+      this.startTick('rec');
     } catch (e) {
       const err = e as BusinessError;
       hilog.error(DOMAIN, TAG, 'startRec fail: %{public}s', err.message);
@@ -233,7 +270,7 @@ export struct RecorderBar {
 
   // 停止录音：stop → release，回写真实 WAV 头（dataSize），关闭 fd
   private async stopRec(): Promise<void> {
-    this.clearTimer();
+    this.stopTick();
     try {
       if (this.audioCapturer) {
         try { await this.audioCapturer.stop(); } catch (e) { /* ignore */ }
@@ -242,10 +279,16 @@ export struct RecorderBar {
       }
       if (this.recFile) {
         const dataSize: number = Math.max(0, this.pcmOffset - 44);
-        try { this.writeWavHeader(this.recFile.fd, dataSize); } catch (e) { /* ignore */ }
+        try {
+          // 回到文件头再回写 WAV 头：writeSync 写在当前光标处，不 lseek 会追加到文件末尾变成第二个头
+          fileIo.lseek(this.recFile.fd, 0, 0);
+          this.writeWavHeader(this.recFile.fd, dataSize);
+          hilog.info(DOMAIN, TAG, 'stopRec 写入 WAV dataSize=%{public}d 字节', dataSize);
+        } catch (e) { /* ignore */ }
         try { fileIo.closeSync(this.recFile.fd); } catch (e) { /* ignore */ }
         this.recFile = undefined;
       }
+      this.recDuration = this.sec;   // 记录本次录音时长（秒），供回放有界计时
     } catch (e) {
       const err = e as BusinessError;
       hilog.error(DOMAIN, TAG, 'stopRec fail: %{public}s', err.message);
@@ -254,43 +297,75 @@ export struct RecorderBar {
     this.hasFile = this.fileExists();
   }
 
-  // 回放：创建 AVPlayer → 设置 fd 源 → play
+  // 回放：创建 AVPlayer → 设置 fd 源 → 待 stateChange 到 prepared 再 play
+  // ⚠️ 关键修复：AVPlayer 是异步状态机，必须等 'prepared' 后调用 play() 才会真正出声；
+  //    原代码在设置 url 后立刻 play()，此时播放器还在 idle/initialized，调用被忽略 → 回放完全无声。
+  //    改用 fdSrc（带 offset/length）比 url('fd://') 更稳，避免读到错误区间。
   private async play(): Promise<void> {
     if (this.playing) {
       this.stopPlay();
       return;
     }
+    if (!this.hasFile) {
+      return;
+    }
+    // 释放上一次已结束但未释放的播放器（如 completed 后未 replay），避免句柄泄漏
+    if (this.avPlayer) {
+      try { this.avPlayer.release(); } catch (e) { /* ignore */ }
+      this.avPlayer = undefined;
+    }
+    if (this.playFile) {
+      try { fileIo.closeSync(this.playFile.fd); } catch (e) { /* ignore */ }
+      this.playFile = undefined;
+    }
     try {
-      this.avPlayer = await media.createAVPlayer();
-      this.avPlayer.on('error', (err: BusinessError): void => {
-        hilog.error(DOMAIN, TAG, 'play error: %{public}s', err.message);
+      const path: string = this.filePath();
+      const stat = fileIo.statSync(path);
+      const file: fileIo.File = fileIo.openSync(path, fileIo.OpenMode.READ_ONLY);
+      this.playFile = file;
+      this.playing = true;
+      this.paused = false;
+      this.sec = 0;
+      const player: media.AVPlayer = await media.createAVPlayer();
+      this.avPlayer = player;
+      player.on('error', (err: BusinessError): void => {
+        hilog.error(DOMAIN, TAG, 'avPlayer error: %{public}s', err.message);
+        this.playing = false;
+        this.stopTick();
+        this.sec = 0;
       });
-      this.avPlayer.on('stateChange', (state: media.AVPlayerState, reason: media.StateChangeReason): void => {
-        if (state === 'completed') {
+      player.on('stateChange', (state: media.AVPlayerState, reason: media.StateChangeReason): void => {
+        hilog.info(DOMAIN, TAG, 'avPlayer stateChange=%{public}s', state);
+        if (state === 'initialized') {
+          // fd 源设置后进入 initialized，需主动 prepare 才能进入 prepared
+          try { player.prepare(); } catch (e) { /* ignore */ }
+        } else if (state === 'prepared') {
+          try { player.play(); } catch (e) { /* ignore */ }
+        } else if (state === 'completed') {
           this.playing = false;
-          this.clearTimer();
+          this.paused = false;
+          this.stopTick();
           this.sec = 0;
+          try { player.release(); } catch (e) { /* ignore */ }
+          this.avPlayer = undefined;
         }
       });
-      const file = fileIo.openSync(this.filePath(), fileIo.OpenMode.READ_ONLY);
-      this.playFile = file;
-      this.avPlayer.url = 'fd://' + file.fd.toString();
-      this.avPlayer.play();
-      this.playing = true;
-      this.sec = 0;
-      this.startTimer();
+      // 设置 fd 源（带 offset/length），触发 stateChange 状态机推进到 prepared
+      player.fdSrc = { fd: file.fd, offset: 0, length: stat.size };
+      this.startTick('play');   // 有界回放计时：到录音时长自动停止
     } catch (e) {
       const err = e as BusinessError;
       hilog.error(DOMAIN, TAG, 'play fail: %{public}s', err.message);
+      this.playing = false;
     }
   }
 
   private stopPlay(): void {
-    this.clearTimer();
+    this.stopTick();
     try {
       if (this.avPlayer) {
-        this.avPlayer.stop();
-        this.avPlayer.release();
+        try { this.avPlayer.stop(); } catch (e) { /* ignore */ }
+        try { this.avPlayer.release(); } catch (e) { /* ignore */ }
         this.avPlayer = undefined;
       }
       if (this.playFile) {
@@ -302,14 +377,38 @@ export struct RecorderBar {
       hilog.error(DOMAIN, TAG, 'stopPlay fail: %{public}s', err.message);
     }
     this.playing = false;
+    this.paused = false;
     this.sec = 0;
+  }
+
+  // 暂停回放：停在当前位置，保留 sec 进度，可继续
+  private pausePlay(): void {
+    if (!this.avPlayer || !this.playing) {
+      return;
+    }
+    try { this.avPlayer.pause(); } catch (e) { /* ignore */ }
+    this.playing = false;
+    this.paused = true;
+    this.stopTick();   // 冻结进度（保留 sec）
+  }
+
+  // 继续回放：从暂停处接着播，进度沿用当前 sec
+  private resumePlay(): void {
+    if (!this.avPlayer || !this.paused) {
+      return;
+    }
+    try { this.avPlayer.play(); } catch (e) { /* ignore */ }
+    this.playing = true;
+    this.paused = false;
+    this.startTick('play');   // 从当前 sec 继续计时
   }
 
   // 强制复位（切题 / 离开页面）：释放资源、关闭 fd、复位状态
   private forceStop(): void {
-    this.clearTimer();
+    this.stopTick();
     this.recording = false;
     this.playing = false;
+    this.paused = false;
     this.sec = 0;
     if (this.audioCapturer) {
       this.audioCapturer.release().then((): void => {}).catch((): void => {});
@@ -370,14 +469,6 @@ export struct RecorderBar {
               else this.startRec();
             })
           if (this.hasFile) {
-            Button(this.playing ? '停止回放' : '回放')
-              .layoutWeight(1)
-              .height(40)
-              .fontSize(14)
-              .backgroundColor(this.playing ? $r('app.color.warning') : $r('app.color.surface_variant'))
-              .fontColor(this.playing ? $r('app.color.on_primary') : $r('app.color.text_primary'))
-              .borderRadius(RADIUS.pill)
-              .onClick(() => this.play())
             // 本地语音识别转写（端侧、零密钥、隐私不出本机）
             Button(this.transcribing ? '转写中…' : '转写为文字')
               .layoutWeight(1)
@@ -393,8 +484,63 @@ export struct RecorderBar {
         .width('100%')
         .margin({ top: SPACE.xs })
 
+        // 回放控制：未播→回放；播放中→暂停/停止；已暂停→继续/停止
+        if (this.hasFile) {
+          Row({ space: 10 }) {
+            if (this.playing) {
+              Button('暂停')
+                .layoutWeight(1)
+                .height(40)
+                .fontSize(14)
+                .backgroundColor($r('app.color.warning'))
+                .fontColor($r('app.color.on_primary'))
+                .borderRadius(RADIUS.pill)
+                .onClick(() => this.pausePlay())
+              Button('停止')
+                .layoutWeight(1)
+                .height(40)
+                .fontSize(14)
+                .backgroundColor($r('app.color.surface_variant'))
+                .fontColor($r('app.color.text_primary'))
+                .borderRadius(RADIUS.pill)
+                .onClick(() => this.stopPlay())
+            } else if (this.paused) {
+              Button('继续')
+                .layoutWeight(1)
+                .height(40)
+                .fontSize(14)
+                .backgroundColor($r('app.color.brand'))
+                .fontColor($r('app.color.on_primary'))
+                .borderRadius(RADIUS.pill)
+                .onClick(() => this.resumePlay())
+              Button('停止')
+                .layoutWeight(1)
+                .height(40)
+                .fontSize(14)
+                .backgroundColor($r('app.color.surface_variant'))
+                .fontColor($r('app.color.text_primary'))
+                .borderRadius(RADIUS.pill)
+                .onClick(() => this.stopPlay())
+            } else {
+              Button('回放')
+                .layoutWeight(1)
+                .height(40)
+                .fontSize(14)
+                .backgroundColor($r('app.color.surface_variant'))
+                .fontColor($r('app.color.text_primary'))
+                .borderRadius(RADIUS.pill)
+                .onClick(() => this.play())
+            }
+          }
+          .width('100%')
+          .margin({ top: SPACE.xs })
+        }
+
         Text(
-          (this.recording ? '录音中 ' : (this.playing ? '回放中 ' : (this.hasFile ? '上次录音 ' : ''))) + this.fmt(this.sec)
+          (this.recording ? '录音中 ' :
+            (this.playing ? '回放中 ' :
+              (this.paused ? '已暂停 ' :
+                (this.hasFile ? '上次录音 ' : '')))) + this.fmt(this.sec)
         )
           .fontSize(FONT.caption)
           .fontColor($r('app.color.text_secondary'))

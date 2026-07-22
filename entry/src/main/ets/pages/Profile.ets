@@ -5,6 +5,7 @@ import { preferences } from '@kit.ArkData';
 import { DataStore } from '../model/DataStore';
 import { AppData, Question, RatedItem, PracticeSession } from '../model/Types';
 import { FONT, RADIUS, SPACE } from '../utils/Theme';
+import { PageHero, IconTile, StatCard } from '../utils/Ui';
 
 const PREF_NAME: string = 'practice';
 
@@ -75,23 +76,21 @@ export struct ProfileView {
     router.pushUrl({ url: 'pages/StudyPlan' });
   }
 
-  // 通用入口行（标题 + 副标题 + 箭头）；icon 为空则不拼前缀（避免 emoji 渲染问题）
-  @Builder entryRow(icon: string, title: string, sub: string, cb: () => void) {
+  // 通用入口行：图标块 + 标题 + 副标题 + 箭头
+  @Builder entryRow(emoji: string, bg: Resource, fg: Resource, title: string, sub: string, cb: () => void) {
     Row() {
+      IconTile({ emoji: emoji, bg: bg, fg: fg, dim: 42 })
+        .margin({ right: SPACE.md })
       Column() {
-        if (icon) {
-          Text(`${icon} ${title}`)
-        } else {
-          Text(title)
-        }
+        Text(title)
+          .fontSize(FONT.body)
+          .fontColor($r('app.color.text_primary'))
+          .width('100%')
         Text(sub)
           .fontSize(FONT.caption)
           .fontColor($r('app.color.text_secondary'))
           .margin({ top: SPACE.xs })
-        Text(sub)
-          .fontSize(FONT.caption)
-          .fontColor($r('app.color.text_secondary'))
-          .margin({ top: SPACE.xs })
+          .width('100%')
       }
       .layoutWeight(1)
       .alignItems(HorizontalAlign.Start)
@@ -103,31 +102,37 @@ export struct ProfileView {
     .padding(SPACE.lg)
     .backgroundColor($r('app.color.surface'))
     .borderRadius(RADIUS.md)
-    .margin({ bottom: SPACE.lg })
+    .margin({ bottom: SPACE.sm })
+    .shadow({ radius: 10, color: $r('app.color.card_stroke'), offsetY: 2 })
     .onClick(cb)
   }
 
   build() {
     Column() {
-      Text('个人中心')
-        .fontSize(FONT.display)
-        .fontWeight(FontWeight.Bold)
-        .fontColor($r('app.color.text_title'))
-        .margin({ top: SPACE.lg, bottom: SPACE.md })
+      // 品牌头部
+      PageHero({ emoji: '👤', title: '个人中心', subtitle: '你的学习档案与记录' })
 
       Scroll() {
         Column() {
-          // 我的收藏（可点击进入收藏页，页内带搜索与返回）
-          this.entryRow('藏', '我的收藏', '已收藏的题目与知识点', () => this.onFavorites())
+          // 学习概览：数据卡
+          if (this.data) {
+            Row() {
+              StatCard({ label: '已自评', value: `${this.rated.length}`, unit: '道' })
+                .layoutWeight(1)
+                .margin({ right: SPACE.sm })
+              StatCard({ label: '已演练', value: `${this.sessions.length}`, unit: '套', accent: $r('app.color.accent') })
+                .layoutWeight(1)
+                .margin({ left: SPACE.sm })
+            }
+            .width('100%')
+            .margin({ top: SPACE.md, bottom: SPACE.sm })
+          }
 
-          // 我的学习记录（入口，点击进入带搜索的子页）
-          this.entryRow('学', '我的学习记录', `已自评 ${this.rated.length} 道`, () => this.onStudyRecord())
-
-          // 我的真题演练记录（入口，点击进入带搜索的子页）
-          this.entryRow('演', '我的真题演练记录', `已完成 ${this.sessions.length} 套`, () => this.onExamRecord())
-
-          // 备考计划（入口，考试倒计时 + 复习任务清单）
-          this.entryRow('划', '备考计划', '考试倒计时 + 复习任务清单', () => this.onStudyPlan())
+          // 入口卡片
+          this.entryRow('🩷', $r('app.color.accent_soft'), $r('app.color.accent'), '我的收藏', '已收藏的题目与知识点', () => this.onFavorites())
+          this.entryRow('📝', $r('app.color.brand_light'), $r('app.color.brand'), '我的学习记录', `已自评 ${this.rated.length} 道`, () => this.onStudyRecord())
+          this.entryRow('🎯', $r('app.color.brand_light'), $r('app.color.info'), '我的真题演练记录', `已完成 ${this.sessions.length} 套`, () => this.onExamRecord())
+          this.entryRow('📅', $r('app.color.brand_light'), $r('app.color.brand'), '备考计划', '考试倒计时 + 复习任务清单', () => this.onStudyPlan())
         }
         .width('92%')
         .alignItems(HorizontalAlign.Start)

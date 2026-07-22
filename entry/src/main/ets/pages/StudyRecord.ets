@@ -6,6 +6,7 @@ import { DataStore } from '../model/DataStore';
 import { AppData, Question, RatedItem } from '../model/Types';
 import { BackHeader } from '../utils/BackHeader';
 import { RADIUS } from '../utils/Theme';
+import { IconTile, EmptyState } from '../utils/Ui';
 
 const PREF_NAME: string = 'practice';
 
@@ -23,7 +24,7 @@ struct StudyRecord {
         const list: RatedItem[] = [];
         if (rIds) {
           const arr: string[] = rIds.split(',');
-          for (let i = 0; i < arr.length; i++) {
+          for (let i: number = 0; i < arr.length; i++) {
             const id: string = arr[i];
             const rating: string = p.getSync('r_' + id, '') as string;
             const q: Question | undefined = DataStore.questionById(id);
@@ -42,7 +43,7 @@ struct StudyRecord {
       return this.rated;
     }
     const out: RatedItem[] = [];
-    for (let i = 0; i < this.rated.length; i++) {
+    for (let i: number = 0; i < this.rated.length; i++) {
       if (this.rated[i].title.toLowerCase().includes(k)) {
         out.push(this.rated[i]);
       }
@@ -78,20 +79,16 @@ struct StudyRecord {
       .margin({ bottom: 10 })
 
       if (this.rated.length === 0) {
-        Text('还没有自评记录，去真题模考练一套吧')
-          .fontSize(14)
-          .fontColor($r('app.color.text_secondary'))
-          .margin(40)
+        EmptyState({ emoji: '📝', text: '还没有自评记录，去真题模考练一套吧' })
       } else if (this.filterRated().length === 0) {
-        Text(`没有匹配「${this.kw}」的记录`)
-          .fontSize(14)
-          .fontColor($r('app.color.text_secondary'))
-          .margin(40)
+        EmptyState({ emoji: '🔍', text: `没有匹配「${this.kw}」的记录` })
       } else {
         List() {
           ForEach(this.filterRated(), (r: RatedItem) => {
             ListItem() {
               Row() {
+                IconTile({ emoji: '📝', bg: $r('app.color.brand_light'), fg: $r('app.color.brand'), dim: 40 })
+                  .margin({ right: 12 })
                 Text(r.title)
                   .fontSize(14)
                   .fontColor($r('app.color.text_primary'))
@@ -101,12 +98,14 @@ struct StudyRecord {
                 Text(r.rating)
                   .fontSize(12)
                   .fontColor(this.rateColor(r.rating))
+                  .margin({ left: 8 })
               }
               .width('100%')
               .padding(12)
               .backgroundColor($r('app.color.surface'))
               .borderRadius(RADIUS.sm)
               .margin({ bottom: 6 })
+              .shadow({ radius: 8, color: $r('app.color.card_stroke'), offsetY: 2 })
               .onClick(() => router.pushUrl({ url: 'pages/Detail', params: { id: r.id, kind: 'question' } }))
             }
           }, (r: RatedItem) => r.id)

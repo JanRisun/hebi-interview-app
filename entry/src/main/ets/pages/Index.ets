@@ -23,29 +23,36 @@ struct Index {
     }
   }
 
-  // 自定义底部 Tab 按钮（SymbolGlyph 系统符号 + 文字，选中高亮品牌色）
-  // iconStr: sys.symbol 资源名（如 'sys.symbol.book'），内部通过 $r() 引用
+  // 自定义底部 Tab 按钮（SymbolGlyph 系统符号 + 文字 + 选中指示器）
   @Builder tabBarItem(idx: number, iconStr: string, label: string) {
     Column() {
       SymbolGlyph($r(iconStr))
-        .fontSize(24)
+        .fontSize(this.current === idx ? 24 : 22)
         .fontColor(this.current === idx
           ? [$r('app.color.brand'), $r('app.color.brand'), $r('app.color.brand')]
           : [$r('app.color.text_tertiary'), $r('app.color.text_tertiary'), $r('app.color.text_tertiary')])
       Text(label)
         .fontSize(FONT.mini)
+        .fontWeight(this.current === idx ? FontWeight.Bold : FontWeight.Normal)
         .fontColor(this.current === idx ? $r('app.color.brand') : $r('app.color.text_tertiary'))
         .margin({ top: SPACE.xs })
+      // 选中指示器：选中时显示品牌色小条
+      Row()
+        .width(20)
+        .height(3)
+        .borderRadius(2)
+        .backgroundColor(this.current === idx ? $r('app.color.brand') : $r('app.color.transparent'))
+        .margin({ top: 2 })
     }
     .width('100%')
-    .height(52)
+    .height(56)
     .justifyContent(FlexAlign.Center)
+    .backgroundColor($r('app.color.surface'))
   }
 
   build() {
     // 根容器：包裹 4 Tab 内容（悬浮播控按钮不放主框架，由各具体页按需叠加）
     Stack({ alignContent: Alignment.BottomStart }) {
-      // 底层：Tab 页面内容
       Column() {
         Tabs({ barPosition: BarPosition.End }) {
           TabContent() {
@@ -70,6 +77,7 @@ struct Index {
         })
         .width('100%')
         .layoutWeight(1)
+        .backgroundColor($r('app.color.background'))
       }
       .width('100%')
       .height('100%')

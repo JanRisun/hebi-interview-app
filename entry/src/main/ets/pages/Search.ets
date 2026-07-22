@@ -4,6 +4,8 @@ import { DataStore } from '../model/DataStore';
 import { AppData, SearchHit } from '../model/Types';
 import { searchAll } from '../model/SearchEngine';
 import { RADIUS } from '../utils/Theme';
+import { BackHeader } from '../utils/BackHeader';
+import { IconTile, EmptyState, TagChip } from '../utils/Ui';
 
 @Entry
 @Component
@@ -35,6 +37,8 @@ struct SearchPage {
 
   build() {
     Column() {
+      BackHeader({ title: '搜索' })
+
       Row() {
         TextInput({ placeholder: '输入关键词，如：调研、红旗渠、情景模拟', text: this.kw })
           .onChange((v: string) => {
@@ -54,61 +58,64 @@ struct SearchPage {
           .borderRadius(RADIUS.pill)
       }
       .width('92%')
-      .margin({ top: 12, bottom: 10 })
+      .margin({ bottom: 10 })
 
       if (this.data) {
         Flex({ wrap: FlexWrap.Wrap }) {
           ForEach(this.data.tags.keywords.slice(0, 14), (k: string) => {
-            Text(k)
-              .fontSize(12)
-              .padding({ left: 12, right: 12, top: 5, bottom: 5 })
-              .backgroundColor($r('app.color.tag_bg'))
-              .fontColor($r('app.color.brand'))
-              .borderRadius(RADIUS.lg)
+            TagChip({ text: k, selected: false, onTap: (): void => { this.kw = k; this.doSearch(); } })
               .margin(4)
-              .onClick(() => {
-                this.kw = k;
-                this.doSearch();
-              })
           }, (k: string) => k)
         }
         .width('92%')
       }
 
-      List() {
-        ForEach(this.hits, (h: SearchHit) => {
-          ListItem() {
-            Row() {
-              Column() {
-                Text(h.title)
-                  .fontSize(15)
-                  .fontWeight(FontWeight.Medium)
-                  .fontColor($r('app.color.text_primary'))
-                Text(`${h.kind === 'article' ? '知识点' : '真题'} · ${h.category}`)
-                  .fontSize(12)
-                  .fontColor($r('app.color.text_secondary'))
-                  .margin({ top: 4 })
+      if (this.hits.length === 0) {
+        EmptyState({ emoji: '🔍', text: this.kw ? `没有匹配「${this.kw}」的结果` : '输入关键词开始搜索' })
+      } else {
+        List() {
+          ForEach(this.hits, (h: SearchHit) => {
+            ListItem() {
+              Row() {
+                IconTile({
+                  emoji: h.kind === 'article' ? '📖' : '❓',
+                  bg: h.kind === 'article' ? $r('app.color.brand_light') : $r('app.color.accent_soft'),
+                  fg: h.kind === 'article' ? $r('app.color.brand') : $r('app.color.accent'),
+                  dim: 40
+                })
+                  .margin({ right: 12 })
+                Column() {
+                  Text(h.title)
+                    .fontSize(15)
+                    .fontWeight(FontWeight.Medium)
+                    .fontColor($r('app.color.text_primary'))
+                  Text(`${h.kind === 'article' ? '知识点' : '真题'} · ${h.category}`)
+                    .fontSize(12)
+                    .fontColor($r('app.color.text_secondary'))
+                    .margin({ top: 4 })
+                }
+                .layoutWeight(1)
+                .alignItems(HorizontalAlign.Start)
+                Text('›')
+                  .fontSize(20)
+                  .fontColor($r('app.color.text_arrow'))
               }
-              .layoutWeight(1)
-              .alignItems(HorizontalAlign.Start)
-              Text('›')
-                .fontSize(20)
-                .fontColor($r('app.color.text_arrow'))
+              .width('100%')
+              .padding(14)
+              .backgroundColor($r('app.color.surface'))
+              .borderRadius(RADIUS.md)
+              .margin({ bottom: 8 })
+              .shadow({ radius: 10, color: $r('app.color.card_stroke'), offsetY: 2 })
+              .onClick(() => {
+                router.pushUrl({ url: 'pages/Detail', params: { id: h.id, kind: h.kind } });
+              })
             }
-            .width('100%')
-            .padding(14)
-            .backgroundColor($r('app.color.surface'))
-            .borderRadius(RADIUS.md)
-            .margin({ bottom: 8 })
-            .onClick(() => {
-              router.pushUrl({ url: 'pages/Detail', params: { id: h.id, kind: h.kind } });
-            })
-          }
-        }, (h: SearchHit) => h.id)
+          }, (h: SearchHit) => h.id)
+        }
+        .width('92%')
+        .layoutWeight(1)
+        .margin({ top: 8 })
       }
-      .width('92%')
-      .layoutWeight(1)
-      .margin({ top: 8 })
     }
     .width('100%')
     .height('100%')

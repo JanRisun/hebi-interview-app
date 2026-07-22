@@ -5,6 +5,7 @@ import { DataStore } from '../model/DataStore';
 import { AppData, PracticeSession } from '../model/Types';
 import { BackHeader } from '../utils/BackHeader';
 import { RADIUS } from '../utils/Theme';
+import { IconTile, EmptyState } from '../utils/Ui';
 
 const PREF_NAME: string = 'practice';
 
@@ -22,7 +23,7 @@ struct ExamRecord {
         const list: PracticeSession[] = [];
         if (sIds) {
           const arr: string[] = sIds.split(',');
-          for (let i = 0; i < arr.length; i++) {
+          for (let i: number = 0; i < arr.length; i++) {
             const raw: string = p.getSync('sess_' + arr[i], '{}') as string;
             try {
               const rec: PracticeSession = JSON.parse(raw) as PracticeSession;
@@ -44,7 +45,7 @@ struct ExamRecord {
       return this.sessions;
     }
     const out: PracticeSession[] = [];
-    for (let i = 0; i < this.sessions.length; i++) {
+    for (let i: number = 0; i < this.sessions.length; i++) {
       if (this.sessions[i].setTitle.toLowerCase().includes(k)) {
         out.push(this.sessions[i]);
       }
@@ -78,35 +79,36 @@ struct ExamRecord {
       .margin({ bottom: 10 })
 
       if (this.sessions.length === 0) {
-        Text('还没有演练记录，去真题模考试试')
-          .fontSize(14)
-          .fontColor($r('app.color.text_secondary'))
-          .margin(40)
+        EmptyState({ emoji: '🎯', text: '还没有演练记录，去真题模考试试' })
       } else if (this.filterSessions().length === 0) {
-        Text(`没有匹配「${this.kw}」的套题`)
-          .fontSize(14)
-          .fontColor($r('app.color.text_secondary'))
-          .margin(40)
+        EmptyState({ emoji: '🔍', text: `没有匹配「${this.kw}」的套题` })
       } else {
         List() {
           ForEach(this.filterSessions(), (s: PracticeSession, i: number) => {
             ListItem() {
-              Column() {
-                Text(s.setTitle)
-                  .fontSize(14)
-                  .fontWeight(FontWeight.Medium)
-                  .fontColor($r('app.color.text_primary'))
-                Text(`${s.date} · 用时 ${this.fmt(s.durationSec)} · 掌握${s.master}/模糊${s.vague}/不会${s.fail}`)
-                  .fontSize(12)
-                  .fontColor($r('app.color.text_secondary'))
-                  .margin({ top: 3 })
+              Row() {
+                IconTile({ emoji: '🎯', bg: $r('app.color.brand_light'), fg: $r('app.color.info'), dim: 40 })
+                  .margin({ right: 12 })
+                Column() {
+                  Text(s.setTitle)
+                    .fontSize(14)
+                    .fontWeight(FontWeight.Medium)
+                    .fontColor($r('app.color.text_primary'))
+                  Text(`${s.date} · 用时 ${this.fmt(s.durationSec)} · 掌握${s.master}/模糊${s.vague}/不会${s.fail}`)
+                    .fontSize(12)
+                    .fontColor($r('app.color.text_secondary'))
+                    .margin({ top: 3 })
+                }
+                .layoutWeight(1)
+                .alignItems(HorizontalAlign.Start)
               }
               .width('100%')
               .padding(12)
               .backgroundColor($r('app.color.surface'))
               .borderRadius(RADIUS.sm)
               .margin({ bottom: 6 })
-              .alignItems(HorizontalAlign.Start)
+              .shadow({ radius: 8, color: $r('app.color.card_stroke'), offsetY: 2 })
+              .alignItems(VerticalAlign.Center)
             }
           }, (s: PracticeSession, i: number) => s.setTitle + '_' + i)
         }

@@ -31,30 +31,33 @@ class _AsrHelperImpl {
   private engine: speechRecognizer.SpeechRecognitionEngine | undefined = undefined;
   private sessionId: string = 'asr_' + Date.now().toString();
   private resultText: string = '';
+  private lastInitErr: string = '';   // 最近一次 createEngine 失败的具体信息（含错误码），用于上层提示
   private resolveFn: ((text: string) => void) | undefined = undefined;
   private rejectFn: ((err: string) => void) | undefined = undefined;
 
-  // 创建引擎（long 离线模式）；已存在直接返回
-  private async ensureEngine(): Promise<void> {
-    if (this.engine) return;
+  // 创建引擎（long 离线模式）；已存在直接返回 true。返回 false 多为设备未预置离线中文模型。
+  private async ensureEngine(): Promise<boolean> {
+    if (this.engine) return true;
     const extraParam: Record<string, Object> = {
       'locate': 'CN',
       'recognizerMode': 'long'   // 单题 150s > 60s 短语音上限，必须用 long
     };
     const initParams: speechRecognizer.CreateEngineParams = {
       language: 'zh-CN',
-      online: 1,                 // 1 = 离线模型
+      online: 1,                 // 1 = 离线模型（当前仅支持离线，需设备预置 zh-CN 模型）
       extraParams: extraParam
     };
-    return new Promise<void>((resolve) => {
+    return new Promise<boolean>((resolve) => {
       speechRecognizer.createEngine(initParams, (err: BusinessError, engine: speechRecognizer.SpeechRecognitionEngine) => {
         if (!err) {
           this.engine = engine;
           this.setListener();
+          resolve(true);
         } else {
-          hilog.error(DOMAIN, TAG, 'createEngine fail: %{public}s', err.message);
+          this.lastInitErr = err.code + ':' + err.message;
+          hilog.error(DOMAIN, TAG, 'createEngine fail: %{public}s', this.lastInitErr);
+          resolve(false);
         }
-        resolve();
       });
     });
   }
@@ -89,12 +92,16 @@ class _AsrHelperImpl {
     this.engine.setListener(listener);
   }
 
-  // 文件转写：打开 WAV → seek 跳过 44 字节头 → 循环 readSync 顺序读（每次自动推进 fd 位置）
-  //   → 按 1280 字节块 writeAudio → finish() → 返回文字
+  // 文件转写：打开 WAV → 跳过 44 字节头 → startListening 启动识别 → 按 1280 字节块 writeAudio → finish → 返回文字
   async transcribeFile(wavPath: string): Promise<string> {
-    await this.ensureEngine();
-    if (!this.engine) return '';
+    const ok: boolean = await this.ensureEngine();
+    if (!ok || !this.engine) {
+      throw new Error('语音识别引擎初始化失败（' + this.lastInitErr +
+        '）。多为设备未预置离线中文语音模型：请到系统「设置→语音/输入法/智慧语音」确认中文离线语音识别模型已下载启用；模拟器通常无此模型，需真机验证。');
+    }
     this.resultText = '';
+    // 每次转写使用新的会话 ID，避免重复调用时 session 冲突导致 startListening 失败
+    this.sessionId = 'asr_' + Date.now().toString() + '_' + Math.floor(Math.random() * 1000).toString();
     return new Promise<string>((resolve, reject) => {
       this.resolveFn = resolve;
       this.rejectFn = reject;
@@ -105,7 +112,8 @@ class _AsrHelperImpl {
           resolve('');
           return;
         }
-        // 开始识别（文件转文字模式 recognitionMode:0）
+        // 开始识别参数（音频文件转文字模式 recognitionMode:1 = 实时音频转文字，需 writeAudio 喂流）
+        //   recognitionMode:0 = 麦克风实时录音（文件场景不可用，会导致收不到任何结果）
         const audioInfo: speechRecognizer.AudioInfo = {
           audioType: 'pcm',
           sampleRate: 16000,
@@ -113,10 +121,10 @@ class _AsrHelperImpl {
           sampleBit: 16
         };
         const extraParam: Record<string, Object> = {
-          'recognitionMode': 0,
-          'vadBegin': 2000,
-          'vadEnd': 3000,
-          'maxAudioDuration': 200000
+          'recognitionMode': 1,
+          // 最大音频时长（ms）。会话级参数，不传则默认仅 20000ms(20s)，超即报 1002200003；
+          // 长语音模式(引擎已 recognizerMode:'long')上限 8h，这里给 10 分钟余量覆盖单题开口作答。
+          'maxAudioDuration': 600000
         };
         const startParams: speechRecognizer.StartParams = {
           sessionId: this.sessionId,
@@ -124,21 +132,30 @@ class _AsrHelperImpl {
           extraParams: extraParam
         };
 
-        // 打开 WAV 文件
-        // ArkTS fileIo 没有 seekSync 方法；跳过 44 字节头的做法：先 readSync 吞掉头（读到临时 buffer 丢弃）
+        // ⚠️ 必须先 startListening 再 writeAudio，否则报 1002200010（未启动监听），音频被丢弃 → 转写无结果
+        this.engine!.startListening(startParams);
+
+        // 打开 WAV 文件；ArkTS fileIo 无 seekSync，跳过 44 字节头：先 readSync 吞掉头（读到临时 buffer 丢弃）
         const file = fileIo.openSync(wavPath, fileIo.OpenMode.READ_ONLY);
         const headerBuf: ArrayBuffer = new ArrayBuffer(WAV_HEADER);
         fileIo.readSync(file.fd, headerBuf, { offset: 0, length: WAV_HEADER }); // 吞掉 WAV 头，不使用
 
         const buf: ArrayBuffer = new ArrayBuffer(CHUNK);
-        // fileIo.readSync 返回 number（实际读到的字节数），参数：(fd, buffer, {offset, length})
         let bytesRead: number = 0;
         const sleep = (ms: number): Promise<void> => new Promise<void>((r) => setTimeout(r, ms));
         (async (): Promise<void> => {
           try {
             // 已跳过 44 字节头，从此处开始顺序读 PCM 数据，直到 EOF
             while ((bytesRead = fileIo.readSync(file.fd, buf, { offset: 0, length: CHUNK })) > 0) {
-              this.engine!.writeAudio(this.sessionId, new Uint8Array(buf.slice(0, bytesRead)));
+              // writeAudio 块长【仅支持 640 或 1280 字节】；最后一块不足 1280 时补零到 1280，否则报 401 参数错误
+              let chunk: Uint8Array;
+              if (bytesRead < CHUNK) {
+                chunk = new Uint8Array(CHUNK);
+                chunk.set(new Uint8Array(buf.slice(0, bytesRead)));
+              } else {
+                chunk = new Uint8Array(buf.slice(0, bytesRead));
+              }
+              this.engine!.writeAudio(this.sessionId, chunk);
               await sleep(WRITE_INTERVAL_MS);
             }
           } catch (e) {
@@ -147,7 +164,7 @@ class _AsrHelperImpl {
           } finally {
             try { fileIo.closeSync(file.fd); } catch (closeErr) { /* ignore */ }
             // 写完所有音频（或读到 EOF）→ 结束识别，触发 onComplete 返回最终文字
-            this.engine!.finish(this.sessionId);
+            try { this.engine!.finish(this.sessionId); } catch (e) { /* ignore */ }
           }
         })();
       } catch (e) {

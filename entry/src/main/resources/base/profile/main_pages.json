@@ -6,6 +6,7 @@
     "pages/StudyRecord",
     "pages/ExamRecord",
     "pages/Detail",
-    "pages/StudyPlan"
+    "pages/StudyPlan",
+    "pages/Practice"
   ]
 }

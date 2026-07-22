@@ -6,6 +6,7 @@ import { Section } from '../model/Types';
 import { FONT, RADIUS, SPACE } from '../utils/Theme';
 import { TtsButton } from '../utils/TtsButton';
 import { TtsFloatButton } from '../utils/TtsFloatButton';
+import { PageHero, EmptyState, IconTile, ProgressRing } from '../utils/Ui';
 
 interface Card {
   title: string;
@@ -61,137 +62,134 @@ export struct FlashcardView {
     Stack({ alignContent: Alignment.BottomStart }) {
       // 底层：速记卡页面内容
       Column() {
-      // 顶部标题 + 进度
-      Row() {
-        Text('速记卡')
-          .fontSize(FONT.display)
-          .fontWeight(FontWeight.Bold)
-          .fontColor($r('app.color.text_title'))
-        if (this.cards.length > 0) {
-          Text(`  ${this.idx + 1} / ${this.cards.length}`)
-            .fontSize(FONT.bodySm)
-            .fontColor($r('app.color.text_secondary'))
-            .layoutWeight(1)
-            .textAlign(TextAlign.End)
-        }
-      }
-      .width('92%')
-      .margin({ top: SPACE.lg, bottom: SPACE.md })
+        // 品牌头部
+        PageHero({ emoji: '🎴', title: '速记卡', subtitle: '凭记忆回想，翻转核对详解' })
 
-      if (this.cards.length === 0) {
-        Text('加载中…')
-          .fontSize(FONT.bodySm)
-          .fontColor($r('app.color.text_secondary'))
-          .margin(SPACE.xl)
-      } else {
-        // 百词斩式：大卡片居中，点击翻转；左右滑切换/进收藏
-        Stack() {
-          // 正面：知识点要点
-          Column() {
-            Text('要点')
-              .fontSize(FONT.caption)
-              .fontColor($r('app.color.brand'))
-              .margin({ bottom: SPACE.md })
-            Text(this.cards[this.idx].title)
-              .fontSize(FONT.display)
+        if (this.cards.length === 0) {
+          EmptyState({ emoji: '⏳', text: '加载中…' })
+        } else {
+          // 进度行：当前面标签 + 环形进度 + 计数
+          Row() {
+            Text(this.flipped ? '详解' : '要点')
+              .fontSize(FONT.title)
               .fontWeight(FontWeight.Bold)
-              .fontColor($r('app.color.text_primary'))
-              .lineHeight(30)
-              .textAlign(TextAlign.Center)
-            Text('点击卡片翻转看详解')
-              .fontSize(FONT.bodySm)
-              .fontColor($r('app.color.text_hint'))
-              .margin({ top: 20 })
+              .fontColor($r('app.color.brand'))
+              .layoutWeight(1)
+            ProgressRing({ value: this.idx + 1, total: this.cards.length, dim: 38, color: $r('app.color.brand') })
+            Text(`${this.idx + 1}/${this.cards.length}`)
+              .fontSize(FONT.caption)
+              .fontColor($r('app.color.text_secondary'))
+              .margin({ left: SPACE.sm })
           }
-          .width('100%')
-          .height('100%')
-          .justifyContent(FlexAlign.Center)
-          .padding(20)
-          .visibility(this.flipped ? Visibility.Hidden : Visibility.Visible)
-          .rotate({ x: 0, y: 1, angle: this.flipped ? -180 : 0 })
-          .animation({ duration: 280, curve: Curve.Ease })
+          .width('88%')
+          .margin({ top: SPACE.md, bottom: SPACE.sm })
 
-          // 背面：详解内容（可滚动）
-          Scroll() {
+          // 百词斩式：大卡片居中，点击翻转；左右滑切换/进收藏
+          Stack() {
+            // 正面：知识点要点（渐变底 + 图标）
             Column() {
-              Text('详解')
-                .fontSize(FONT.caption)
-                .fontColor($r('app.color.brand'))
-                .margin({ bottom: SPACE.sm })
-              Text(this.cards[this.idx].body)
-                .fontSize(FONT.body)
-                .fontColor($r('app.color.text_body'))
-                .lineHeight(24)
+              IconTile({ emoji: '💡', bg: $r('app.color.on_primary'), fg: $r('app.color.brand'), dim: 52 })
+                .margin({ bottom: SPACE.md })
+              Text(this.cards[this.idx].title)
+                .fontSize(FONT.display)
+                .fontWeight(FontWeight.Bold)
+                .fontColor($r('app.color.text_primary'))
+                .lineHeight(30)
+                .textAlign(TextAlign.Center)
+              Text('点击卡片翻转看详解')
+                .fontSize(FONT.bodySm)
+                .fontColor($r('app.color.text_hint'))
+                .margin({ top: 20 })
             }
             .width('100%')
-            .alignItems(HorizontalAlign.Start)
+            .height('100%')
+            .justifyContent(FlexAlign.Center)
             .padding(20)
+            .linearGradient({ angle: 135, colors: [[$r('app.color.brand_light'), 0], [$r('app.color.surface'), 1]] })
+            .visibility(this.flipped ? Visibility.Hidden : Visibility.Visible)
+            .rotate({ x: 0, y: 1, angle: this.flipped ? -180 : 0 })
+            .animation({ duration: 280, curve: Curve.Ease })
+
+            // 背面：详解内容（可滚动）
+            Scroll() {
+              Column() {
+                Text('详解')
+                  .fontSize(FONT.caption)
+                  .fontColor($r('app.color.brand'))
+                  .margin({ bottom: SPACE.sm })
+                Text(this.cards[this.idx].body)
+                  .fontSize(FONT.body)
+                  .fontColor($r('app.color.text_body'))
+                  .lineHeight(24)
+              }
+              .width('100%')
+              .alignItems(HorizontalAlign.Start)
+              .padding(20)
+            }
+            .width('100%')
+            .height('100%')
+            .backgroundColor($r('app.color.surface'))
+            .visibility(this.flipped ? Visibility.Visible : Visibility.Hidden)
+            .rotate({ x: 0, y: 1, angle: this.flipped ? 0 : 180 })
+            .animation({ duration: 280, curve: Curve.Ease })
           }
-          .width('100%')
-          .height('100%')
-          .visibility(this.flipped ? Visibility.Visible : Visibility.Hidden)
-          .rotate({ x: 0, y: 1, angle: this.flipped ? 0 : 180 })
-          .animation({ duration: 280, curve: Curve.Ease })
+          .width('88%')
+          .height(360)
+          .borderRadius(RADIUS.lg)
+          .shadow({ radius: 16, color: $r('app.color.card_stroke'), offsetX: 0, offsetY: 6 })
+          .onClick(() => this.toggleFlip())
+          .gesture(
+            SwipeGesture({ direction: SwipeDirection.Horizontal, fingers: 1 })
+              .onAction((event) => {
+                this.onSwipe(event.angle);
+              })
+          )
+
+          // 底部操作
+          Row({ space: 12 }) {
+            Button('上一张')
+              .fontSize(FONT.bodySm)
+              .height(42)
+              .layoutWeight(1)
+              .backgroundColor($r('app.color.btn_neutral_bg'))
+              .fontColor($r('app.color.on_primary'))
+              .borderRadius(RADIUS.pill)
+              .enabled(this.idx > 0)
+              .onClick(() => this.go(-1))
+            Button(this.flipped ? '看要点' : '翻转')
+              .fontSize(FONT.bodySm)
+              .height(42)
+              .layoutWeight(1)
+              .backgroundColor($r('app.color.brand'))
+              .fontColor($r('app.color.on_primary'))
+              .borderRadius(RADIUS.pill)
+              .onClick(() => this.toggleFlip())
+            Button('下一张')
+              .fontSize(FONT.bodySm)
+              .height(42)
+              .layoutWeight(1)
+              .backgroundColor($r('app.color.brand'))
+              .fontColor($r('app.color.on_primary'))
+              .borderRadius(RADIUS.pill)
+              .enabled(this.idx < this.cards.length - 1)
+              .onClick(() => this.go(1))
+          }
+          .width('88%')
+          .margin({ top: 20 })
+
+          // 语音播报：朗读当前可见面（正面要点 / 背面详解）
+          // 直接作为 Column 子项（不用 Row 包裹），让 TtsButton 按内容宽度自适应成紧凑药丸
+          TtsButton({
+            text: this.flipped ? this.cards[this.idx].body : this.cards[this.idx].title,
+            label: '朗读当前面'
+          })
+          .margin({ top: 12 })
+
+          Text('提示：先凭记忆回想，再翻转核对；左滑下一张，右滑进收藏')
+            .fontSize(FONT.caption)
+            .fontColor($r('app.color.text_tertiary'))
+            .margin({ top: 14 })
         }
-        .width('88%')
-        .height(360)
-        .backgroundColor($r('app.color.surface'))
-        .borderRadius(RADIUS.lg)
-        .shadow({ radius: 12, color: '#22000000', offsetX: 0, offsetY: 4 })
-        .onClick(() => this.toggleFlip())
-        .gesture(
-          SwipeGesture({ direction: SwipeDirection.Horizontal, fingers: 1 })
-            .onAction((event) => {
-              this.onSwipe(event.angle);
-            })
-        )
-
-        // 底部操作
-        Row({ space: 12 }) {
-          Button('上一张')
-            .fontSize(FONT.bodySm)
-            .height(42)
-            .layoutWeight(1)
-            .backgroundColor($r('app.color.btn_neutral_bg'))
-            .fontColor($r('app.color.on_primary'))
-            .borderRadius(RADIUS.pill)
-            .enabled(this.idx > 0)
-            .onClick(() => this.go(-1))
-          Button(this.flipped ? '看要点' : '翻转')
-            .fontSize(FONT.bodySm)
-            .height(42)
-            .layoutWeight(1)
-            .backgroundColor($r('app.color.brand'))
-            .fontColor($r('app.color.on_primary'))
-            .borderRadius(RADIUS.pill)
-            .onClick(() => this.toggleFlip())
-          Button('下一张')
-            .fontSize(FONT.bodySm)
-            .height(42)
-            .layoutWeight(1)
-            .backgroundColor($r('app.color.brand'))
-            .fontColor($r('app.color.on_primary'))
-            .borderRadius(RADIUS.pill)
-            .enabled(this.idx < this.cards.length - 1)
-            .onClick(() => this.go(1))
-        }
-        .width('88%')
-        .margin({ top: 20 })
-
-        // 语音播报：朗读当前可见面（正面要点 / 背面详解）
-        // 直接作为 Column 子项（不用 Row 包裹），让 TtsButton 按内容宽度自适应成紧凑药丸；
-        // 之前用 Row({space:12}) 包单子项导致 ArkUI 横向宽度约束传递异常，按钮被压成空药丸。
-        TtsButton({
-          text: this.flipped ? this.cards[this.idx].body : this.cards[this.idx].title,
-          label: '朗读当前面'
-        })
-        .margin({ top: 12 })
-
-        Text('提示：像百词斩一样先凭记忆回想，再翻转核对；左滑下一张，右滑进收藏')
-          .fontSize(FONT.caption)
-          .fontColor($r('app.color.text_tertiary'))
-          .margin({ top: 14 })
-      }
       }
       .width('100%')
       .height('100%')

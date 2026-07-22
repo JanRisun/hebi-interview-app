@@ -1,11 +1,16 @@
-// 通用子页头部：左侧返回按钮 + 标题
-// 用法：在子页 build() 顶部放 <BackHeader title={'我的收藏'} />
+// 通用子页头部：左侧返回按钮 + 标题 + 右侧可放操作（@BuilderParam action）
+// 用法：<BackHeader title={'备考计划'} action: () => { ... } />
 import { router } from '@kit.ArkUI';
 import { FONT, SPACE } from './Theme';
 
 @Component
 export struct BackHeader {
   @Prop title: string = '';
+  @BuilderParam action: () => void = this.emptyAction;
+
+  @Builder
+  emptyAction() {
+  }
 
   build() {
     Row() {
@@ -32,6 +37,9 @@ export struct BackHeader {
         .fontColor($r('app.color.text_title'))
         .layoutWeight(1)
         .textAlign(TextAlign.Start)
+
+      // 右侧操作区（默认空）
+      this.action()
     }
     .width('92%')
     .alignItems(VerticalAlign.Center)
