@@ -3,7 +3,7 @@ import { common } from '@kit.AbilityKit';
 import { DataStore } from '../model/DataStore';
 import { AppData, SearchHit } from '../model/Types';
 import { searchAll } from '../model/SearchEngine';
-import { RADIUS } from '../utils/Theme';
+import { RADIUS, SPACE, SAFE_AREA_TYPES, SAFE_AREA_EDGES } from '../utils/Theme';
 import { BackHeader } from '../utils/BackHeader';
 import { IconTile, EmptyState, TagChip } from '../utils/Ui';
 
@@ -34,6 +34,9 @@ struct SearchPage {
       this.hits = [];
     }
   }
+
+  @StorageProp('safeTop') safeTop: number = 0;
+  @StorageProp('safeBottom') safeBottom: number = 0;
 
   build() {
     Column() {
@@ -120,5 +123,64 @@ struct SearchPage {
     .width('100%')
     .height('100%')
     .backgroundColor($r('app.color.background'))
+      .expandSafeArea(SAFE_AREA_TYPES, SAFE_AREA_EDGES)
+      .padding({ top: this.safeTop, bottom: this.safeBottom })
+  }
+}
+
+// 预览专用：mock 搜索结果，Previewer 无需 DataStore/router
+@Preview
+@Component
+struct SearchPreview {
+  build() {
+    Column() {
+      Row() {
+        Text('←')
+          .fontSize(20)
+          .fontColor($r('app.color.text_primary'))
+          .margin({ right: 12 })
+        Row() {
+          Text('🔍')
+            .fontSize(14)
+            .fontColor($r('app.color.text_tertiary'))
+          Text('综合分析')
+            .fontSize(14)
+            .fontColor($r('app.color.text_primary'))
+            .margin({ left: 8 })
+        }
+        .layoutWeight(1)
+        .height(40)
+        .padding({ left: 12 })
+        .backgroundColor($r('app.color.surface'))
+        .borderRadius(RADIUS.pill)
+      }
+      .width('100%')
+      .padding(SPACE.lg)
+
+      Column() {
+        Text('📰')
+          .fontSize(16)
+          .margin({ right: 10 })
+        Column() {
+          Text('综合分析类答题框架')
+            .fontSize(15)
+            .fontColor($r('app.color.text_primary'))
+          Text('考情 · 知识点')
+            .fontSize(12)
+            .fontColor($r('app.color.text_secondary'))
+            .margin({ top: 2 })
+        }
+        .layoutWeight(1)
+        .alignItems(HorizontalAlign.Start)
+      }
+      .width('90%')
+      .padding(SPACE.md)
+      .backgroundColor($r('app.color.surface'))
+      .borderRadius(RADIUS.md)
+    }
+    .width('100%')
+    .height('100%')
+    .backgroundColor($r('app.color.background'))
+    .padding({ top: 16 })
   }
 }

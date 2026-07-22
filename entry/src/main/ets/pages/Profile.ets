@@ -4,7 +4,7 @@ import { common } from '@kit.AbilityKit';
 import { preferences } from '@kit.ArkData';
 import { DataStore } from '../model/DataStore';
 import { AppData, Question, RatedItem, PracticeSession } from '../model/Types';
-import { FONT, RADIUS, SPACE } from '../utils/Theme';
+import { FONT, RADIUS, SPACE, SAFE_AREA_TYPES, SAFE_AREA_EDGES } from '../utils/Theme';
 import { PageHero, IconTile, StatCard } from '../utils/Ui';
 
 const PREF_NAME: string = 'practice';
@@ -107,6 +107,9 @@ export struct ProfileView {
     .onClick(cb)
   }
 
+  @StorageProp('safeTop') safeTop: number = 0;
+  @StorageProp('safeBottom') safeBottom: number = 0;
+
   build() {
     Column() {
       // 品牌头部
@@ -143,5 +146,74 @@ export struct ProfileView {
     .width('100%')
     .height('100%')
     .backgroundColor($r('app.color.background'))
+      .expandSafeArea(SAFE_AREA_TYPES, SAFE_AREA_EDGES)
+      .padding({ top: this.safeTop, bottom: this.safeBottom })
+  }
+}
+
+// 预览专用：mock 个人中心，Previewer 无需 prefs/DataStore
+@Preview
+@Component
+struct ProfilePreview {
+  build() {
+    Column() {
+      Column() {
+        Text('🧑')
+          .fontSize(40)
+        Text('面试备考人')
+          .fontSize(18)
+          .fontWeight(FontWeight.Bold)
+          .fontColor($r('app.color.text_primary'))
+          .margin({ top: 8 })
+        Text('鹤壁市 · 综合岗位')
+          .fontSize(13)
+          .fontColor($r('app.color.text_secondary'))
+          .margin({ top: 4 })
+      }
+      .width('100%')
+      .padding(SPACE.lg)
+      .alignItems(HorizontalAlign.Center)
+
+      Row() {
+        Column() {
+          Text('12')
+            .fontSize(22)
+            .fontWeight(FontWeight.Bold)
+            .fontColor($r('app.color.brand'))
+          Text('收藏')
+            .fontSize(12)
+            .fontColor($r('app.color.text_secondary'))
+        }
+        .layoutWeight(1)
+        Column() {
+          Text('34')
+            .fontSize(22)
+            .fontWeight(FontWeight.Bold)
+            .fontColor($r('app.color.brand'))
+          Text('已学题')
+            .fontSize(12)
+            .fontColor($r('app.color.text_secondary'))
+        }
+        .layoutWeight(1)
+        Column() {
+          Text('4')
+            .fontSize(22)
+            .fontWeight(FontWeight.Bold)
+            .fontColor($r('app.color.brand'))
+          Text('模考套')
+            .fontSize(12)
+            .fontColor($r('app.color.text_secondary'))
+        }
+        .layoutWeight(1)
+      }
+      .width('90%')
+      .padding(SPACE.lg)
+      .backgroundColor($r('app.color.surface'))
+      .borderRadius(RADIUS.md)
+    }
+    .width('100%')
+    .height('100%')
+    .backgroundColor($r('app.color.background'))
+    .padding({ top: 16 })
   }
 }

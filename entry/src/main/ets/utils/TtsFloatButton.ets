@@ -71,9 +71,11 @@ export struct TtsFloatButton {
       this.baseX = savedX;
       this.baseY = savedY;
     } else {
-      // 默认锚定「左下角 + 规范偏移」：距左 LEFT_MARGIN，距底 BOTTOM_RESERVE（避开底部操作栏）
+      // 默认锚定「左下角 + 规范偏移」：距左 LEFT_MARGIN，距底 = Tab 栏预留。
       // 关键：默认落点只由 BottomStart 锚点 + 常量决定，此处【不读屏幕高度】，
       // 因此即便 display 尚未就绪也不会错位（历史 bug 即源于此）。
+      // 全屏沉浸式下底部手势区透明可交互；默认落点 baseY=BOTTOM_RESERVE(80vp) 已高于手势区(~34vp)，
+      // 故无需额外避让，按钮不会被手势条遮挡。
       this.baseX = this.LEFT_MARGIN;
       this.baseY = this.BOTTOM_RESERVE;
     }
@@ -201,9 +203,10 @@ export struct TtsFloatButton {
     const panelW: number = this.getPanelWidth();
     // 水平：LEFT_MARGIN ~ 屏宽-面板宽（左侧保留规范间隙）
     this.baseX = Math.max(this.LEFT_MARGIN, Math.min(this.baseX, Math.max(this.LEFT_MARGIN, scr.w - panelW)));
-    // 垂直（距底）：0 ~ 屏高-面板高（不允许拖出屏幕上下边界）
-    const maxBottom: number = scr.h > 0 ? Math.max(0, scr.h - this.PANEL_HEIGHT) : 9999;
-    this.baseY = Math.max(0, Math.min(this.baseY, maxBottom));
+    // 垂直（距底）：保底 80vp ~ 屏高-面板高（不允许拖出屏幕上下边界，且最低不低于 Tab 栏 + 间距）
+    const minBottom: number = this.BOTTOM_RESERVE;
+    const maxBottom: number = scr.h > 0 ? Math.max(minBottom, scr.h - this.PANEL_HEIGHT) : 9999;
+    this.baseY = Math.max(minBottom, Math.min(this.baseY, maxBottom));
     this.savePosition();
   }
 

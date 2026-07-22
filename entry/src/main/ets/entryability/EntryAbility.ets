@@ -1,6 +1,7 @@
-import { AbilityConstant, UIAbility, Want, Configuration, common } from '@kit.AbilityKit';
+import { AbilityConstant, UIAbility, Want, Configuration, ConfigurationConstant, common } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { window } from '@kit.ArkUI';
+import { BusinessError } from '@kit.BasicServicesKit';
 import { DataStore } from '../model/DataStore';
 import { FavStore } from '../utils/FavStore';
 import { UserTagStore } from '../utils/UserTagStore';
@@ -57,6 +58,39 @@ export default class EntryAbility extends UIAbility {
       if (err.code) {
         hilog.error(DOMAIN, TAG, 'Failed to load the content. Cause: %{public}s', JSON.stringify(err));
         return;
+      }
+      try {
+        const win: window.Window = windowStage.getMainWindowSync();
+        // 沉浸式：窗口全屏，让页面背景延伸到状态栏 / 底部导航手势区
+        // （各页根容器配合 expandSafeArea 将内容避让到安全区内，仅背景延伸）
+        win.setWindowLayoutFullScreen(true).catch((e: BusinessError) => {
+          hilog.error(DOMAIN, TAG, 'setWindowLayoutFullScreen failed: %{public}s', JSON.stringify(e));
+        });
+        // 状态栏 / 导航栏文字颜色随系统深浅色切换，保证在应用背景上可读
+        const isDark: boolean = AppStorage.get<number>('currentColorMode') ===
+          ConfigurationConstant.ColorMode.COLOR_MODE_DARK;
+        win.setWindowSystemBarProperties({
+          statusBarContentColor: isDark ? '#FFFFFF' : '#000000',
+          navigationBarContentColor: isDark ? '#FFFFFF' : '#000000'
+        }).catch((e: BusinessError) => {
+          hilog.error(DOMAIN, TAG, 'setWindowSystemBarProperties failed: %{public}s', JSON.stringify(e));
+        });
+        // 计算并缓存安全区 Insets（状态栏高 / 底部导航手势区高，单位 vp）。
+        // 全屏沉浸模式下系统不预留安全区，需各页按此值内缩 padding 让内容避让状态栏与底部操作栏。
+        const applySafeInsets = (): void => {
+          const area: window.AvoidArea = win.getWindowAvoidArea(window.AvoidAreaType.TYPE_SYSTEM);
+          AppStorage.setOrCreate('safeTop', px2vp(area.topRect.height));
+          AppStorage.setOrCreate('safeBottom', px2vp(area.bottomRect.height));
+        };
+        applySafeInsets();
+        win.on('avoidAreaChange', (data): void => {
+          if (data.type === window.AvoidAreaType.TYPE_SYSTEM) {
+            AppStorage.setOrCreate('safeTop', px2vp(data.area.topRect.height));
+            AppStorage.setOrCreate('safeBottom', px2vp(data.area.bottomRect.height));
+          }
+        });
+      } catch (e) {
+        hilog.error(DOMAIN, TAG, 'window setup failed: %{public}s', JSON.stringify(e));
       }
     });
   }

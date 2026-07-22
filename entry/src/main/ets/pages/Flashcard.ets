@@ -3,7 +3,7 @@ import { router } from '@kit.ArkUI';
 import { common } from '@kit.AbilityKit';
 import { DataStore } from '../model/DataStore';
 import { Section } from '../model/Types';
-import { FONT, RADIUS, SPACE } from '../utils/Theme';
+import { FONT, RADIUS, SPACE, SAFE_AREA_TYPES, SAFE_AREA_EDGES } from '../utils/Theme';
 import { TtsButton } from '../utils/TtsButton';
 import { TtsFloatButton } from '../utils/TtsFloatButton';
 import { PageHero, EmptyState, IconTile, ProgressRing } from '../utils/Ui';
@@ -56,6 +56,9 @@ export struct FlashcardView {
       router.pushUrl({ url: 'pages/Favorites' });
     }
   }
+
+  @StorageProp('safeTop') safeTop: number = 0;
+  @StorageProp('safeBottom') safeBottom: number = 0;
 
   build() {
     // Stack 用 BottomStart 对齐：悬浮按钮默认贴左下角，translate 做微调偏移
@@ -194,11 +197,58 @@ export struct FlashcardView {
       .width('100%')
       .height('100%')
       .backgroundColor($r('app.color.background'))
+      .expandSafeArea(SAFE_AREA_TYPES, SAFE_AREA_EDGES)
+      .padding({ top: this.safeTop, bottom: this.safeBottom })
 
       // 上层：TTS 悬浮播控按钮
       TtsFloatButton()
     }
     .width('100%')
     .height('100%')
+  }
+}
+
+// 预览专用：mock 一张速记卡，Previewer 无需 DataStore
+@Preview
+@Component
+struct FlashcardPreview {
+  build() {
+    Column() {
+      Row() {
+        Text('速记卡')
+          .fontSize(22)
+          .fontWeight(FontWeight.Bold)
+          .fontColor($r('app.color.text_primary'))
+      }
+      .width('100%')
+      .padding({ left: SPACE.lg, top: SPACE.md, bottom: SPACE.md })
+
+      Column() {
+        Text('综合分析类 · 三大要点')
+          .fontSize(13)
+          .fontColor($r('app.color.brand'))
+          .margin({ bottom: SPACE.sm })
+        Text('表态—分析—对策')
+          .fontSize(28)
+          .fontWeight(FontWeight.Bold)
+          .fontColor($r('app.color.text_primary'))
+          .margin({ bottom: SPACE.lg })
+        Text('点亮/滑动翻转')
+          .fontSize(12)
+          .fontColor($r('app.color.text_tertiary'))
+      }
+      .width('90%')
+      .height(280)
+      .padding(SPACE.lg)
+      .backgroundColor($r('app.color.surface'))
+      .borderRadius(RADIUS.lg)
+      .shadow({ radius: 12, color: '#1F000000', offsetY: 4 })
+      .justifyContent(FlexAlign.Center)
+      .alignItems(HorizontalAlign.Center)
+    }
+    .width('100%')
+    .height('100%')
+    .backgroundColor($r('app.color.background'))
+    .padding(16)
   }
 }

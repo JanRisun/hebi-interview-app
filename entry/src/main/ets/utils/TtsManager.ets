@@ -20,6 +20,7 @@ export const SPEED_LABELS: string[] = ['0.5x', '0.75x', '1.0x', '1.25x', '1.5x']
 
 class _TtsEngineImpl {
   private engine: textToSpeech.TextToSpeechEngine | null = null;
+  private enginePromise: Promise<void> | null = null;   // 引擎创建中的 Promise（防止并发重复创建）
   private sessionActive: boolean = false;   // 有朗读会话进行中（含「已暂停」）
   private playing: boolean = false;          // 正在出声（未暂停）
   private paused: boolean = false;           // 已暂停（会话仍在，可继续）
@@ -44,32 +45,32 @@ class _TtsEngineImpl {
 
   // 创建引擎（异步，单例）；已存在直接返回
   private ensureEngine(): Promise<void> {
-    return new Promise<void>((resolve) => {
-      if (this.engine) {
-        resolve();
-        return;
-      }
-      const extraParam: Record<string, Object> = {
-        'style': 'interaction-broadcast',
-        'locate': 'CN',
-        'name': 'EngineName'
-      };
+    if (this.engine) {
+      return Promise.resolve();
+    }
+    if (this.enginePromise) {
+      return this.enginePromise;   // 同一时刻只建一个引擎，避免并发重复创建
+    }
+    this.enginePromise = new Promise<void>((resolve) => {
+      // 离线模式（online: 0）：纯本地合成，无需联网；与本项目「离线播报」设计一致。
+      // 注意：CoreSpeechKit 中 online 0=离线、1=在线（云端），切勿写反。
       const initParams: textToSpeech.CreateEngineParams = {
         language: 'zh-CN',
-        person: 0,            // 0 = 聆小珊女声
-        online: 1,            // 1 = 离线模式（当前仅支持离线）
-        extraParams: extraParam
+        person: 0,           // 0 = 聆小珊女声
+        online: 0            // 0 = 离线模式（纯本地合成，无需联网）；1 = 在线云端模式
       };
       textToSpeech.createEngine(initParams, (err: BusinessError, engine: textToSpeech.TextToSpeechEngine) => {
-        if (!err) {
+        if (!err && engine) {
           this.engine = engine;
           this.setListener();
         } else {
-          console.error(`TTS createEngine failed: ${err.code} ${err.message}`);
+          console.error(`TTS createEngine failed: ${err?.code} ${err?.message}`);
+          this.enginePromise = null;   // 失败则清空，下次点击可重试
         }
         resolve();
       });
     });
+    return this.enginePromise;
   }
 
   // 按中英文句末标点切分，便于「句子级暂停/继续」
@@ -127,15 +128,11 @@ class _TtsEngineImpl {
     const seg: string = this.sentences[this.segIndex];
     const speakParams: textToSpeech.SpeakParams = {
       requestId: 'tts_' + Date.now().toString() + '_' + this.segIndex.toString(),
+      // 仅保留稳妥参数：queueMode=0(FLUSH) 打断上一句；speed 倍速。
+      // 其余非常规参数（playType/audioType/soundChannel/volume/pitch 等）可能导致静音或 speak 失败，已移除。
       extraParams: {
         'queueMode': 0,
-        'speed': this._speed,
-        'volume': 2,
-        'pitch': 1,
-        'languageContext': 'zh-CN',
-        'audioType': 'pcm',
-        'soundChannel': 3,
-        'playType': 1
+        'speed': this._speed
       } as Record<string, Object>
     };
     this.engine.speak(seg, speakParams);
@@ -222,7 +219,7 @@ class _TtsEngineImpl {
         this.syncState();
       },
       onComplete: (_requestId: string, _response: textToSpeech.CompleteResponse) => {
-        if (!this.sessionActive) return;
+        if (!this.sessionActive || this.paused) return;
         this.segIndex++;
         this.speakSegment();
       },

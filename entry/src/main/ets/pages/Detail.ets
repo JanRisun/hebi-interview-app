@@ -9,7 +9,7 @@ import { TtsButton } from '../utils/TtsButton';
 import { TtsFloatButton } from '../utils/TtsFloatButton';
 import { BackHeader } from '../utils/BackHeader';
 import { SectionTitle, TagChip } from '../utils/Ui';
-import { FONT, RADIUS, SPACE } from '../utils/Theme';
+import { FONT, RADIUS, SPACE, SAFE_AREA_TYPES, SAFE_AREA_EDGES } from '../utils/Theme';
 
 // 预设快捷标记（点击切换：未加→添加，已加→移除）
 const PRESET_TAGS: string[] = ['已背', '易错', '重点', '常考', '待复习', '难点'];
@@ -27,9 +27,9 @@ struct Detail {
   @State customInput: string = '';       // 自定义标签输入框
 
   aboutToAppear(): void {
-    const p = router.getParams() as Record<string, Object>;
-    this.itemId = p['id'] as string;
-    this.kind = p['kind'] as string;
+    const p = (router.getParams() ?? {}) as Record<string, Object>;
+    this.itemId = (p['id'] as string) ?? '';
+    this.kind = (p['kind'] as string) ?? 'article';
     const ctx = getContext(this) as common.UIAbilityContext;
     DataStore.load(ctx).then(async () => {
       if (this.kind === 'article') {
@@ -288,6 +288,9 @@ struct Detail {
     .width('100%')
   }
 
+  @StorageProp('safeTop') safeTop: number = 0;
+  @StorageProp('safeBottom') safeBottom: number = 0;
+
   build() {
     // Stack 用 BottomStart 对齐：悬浮按钮默认贴左下角，translate 做微调偏移
     Stack({ alignContent: Alignment.BottomStart }) {
@@ -317,11 +320,69 @@ struct Detail {
       .width('100%')
       .height('100%')
       .backgroundColor($r('app.color.background'))
+      .expandSafeArea(SAFE_AREA_TYPES, SAFE_AREA_EDGES)
+      .padding({ top: this.safeTop, bottom: this.safeBottom })
 
       // 上层：TTS 悬浮播控按钮（全局覆盖）
       TtsFloatButton()
     }
     .width('100%')
     .height('100%')
+  }
+}
+
+// 预览专用：mock 详情页，Previewer 无需 router/DataStore/FavStore
+@Preview
+@Component
+struct DetailPreview {
+  build() {
+    Column() {
+      Row() {
+        Text('←')
+          .fontSize(20)
+          .fontColor($r('app.color.text_primary'))
+        Text('知识点详情')
+          .fontSize(17)
+          .fontWeight(FontWeight.Medium)
+          .fontColor($r('app.color.text_primary'))
+          .margin({ left: 12 })
+        Blank()
+        Text('⭐')
+          .fontSize(18)
+      }
+      .width('100%')
+      .padding(SPACE.lg)
+
+      Text('综合分析类答题框架')
+        .fontSize(20)
+        .fontWeight(FontWeight.Bold)
+        .fontColor($r('app.color.text_primary'))
+        .padding({ left: SPACE.lg, right: SPACE.lg })
+
+      Text('表态—分析—对策')
+        .fontSize(13)
+        .fontColor($r('app.color.brand'))
+        .padding({ left: SPACE.lg, right: SPACE.lg, top: 6 })
+
+      Column() {
+        Text('一、表态环节')
+          .fontSize(15)
+          .fontWeight(FontWeight.Medium)
+          .fontColor($r('app.color.text_primary'))
+          .margin({ bottom: 6 })
+        Text('明确立场 + 一句话概括本质，开门见山。')
+          .fontSize(14)
+          .fontColor($r('app.color.text_secondary'))
+          .lineHeight(22)
+      }
+      .width('90%')
+      .padding(SPACE.lg)
+      .backgroundColor($r('app.color.surface'))
+      .borderRadius(RADIUS.md)
+      .margin({ top: SPACE.md, left: SPACE.lg, right: SPACE.lg })
+    }
+    .width('100%')
+    .height('100%')
+    .backgroundColor($r('app.color.background'))
   }
 }

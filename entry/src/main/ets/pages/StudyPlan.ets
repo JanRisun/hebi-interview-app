@@ -9,7 +9,7 @@ import { notificationManager } from '@kit.NotificationKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { BackHeader } from '../utils/BackHeader';
-import { FONT, RADIUS, SPACE } from '../utils/Theme';
+import { FONT, RADIUS, SPACE, SAFE_AREA_TYPES, SAFE_AREA_EDGES } from '../utils/Theme';
 import { DataStore } from '../model/DataStore';
 import { publishDailyReminder } from '../utils/ReminderHelper';
 import { Article, MockSet, AppData } from '../model/Types';
@@ -405,6 +405,9 @@ struct StudyPlan {
     return n < 10 ? '0' + n.toString() : n.toString();
   }
 
+  @StorageProp('safeTop') safeTop: number = 0;
+  @StorageProp('safeBottom') safeBottom: number = 0;
+
   build() {
     Column() {
       BackHeader({ title: '备考计划' })
@@ -429,27 +432,19 @@ struct StudyPlan {
     .width('100%')
     .height('100%')
     .backgroundColor($r('app.color.background'))
+      .expandSafeArea(SAFE_AREA_TYPES, SAFE_AREA_EDGES)
+      .padding({ top: this.safeTop, bottom: this.safeBottom })
   }
 
   // 倒计时卡片：渐变 banner，白色大字，视觉焦点
   @Builder buildCountdown() {
     Column() {
-      if (this.daysLeft < 0) {
+      if (!this.examDateStr) {
         Text('未设置考试日期')
           .fontSize(FONT.title)
           .fontWeight(FontWeight.Medium)
           .fontColor($r('app.color.on_primary'))
         Text('点击设置目标考试日，开启倒计时')
-          .fontSize(FONT.caption)
-          .fontColor($r('app.color.on_primary'))
-          .opacity(0.85)
-          .margin({ top: SPACE.xs })
-      } else if (this.daysLeft === 0) {
-        Text('就是今天！')
-          .fontSize(FONT.display)
-          .fontWeight(FontWeight.Bold)
-          .fontColor($r('app.color.on_primary'))
-        Text('稳住，你准备好了')
           .fontSize(FONT.caption)
           .fontColor($r('app.color.on_primary'))
           .opacity(0.85)
@@ -471,7 +466,18 @@ struct StudyPlan {
           .fontColor($r('app.color.on_primary'))
           .opacity(0.85)
           .margin({ top: SPACE.sm })
+      } else if (this.daysLeft === 0) {
+        Text('就是今天！')
+          .fontSize(FONT.display)
+          .fontWeight(FontWeight.Bold)
+          .fontColor($r('app.color.on_primary'))
+        Text('稳住，你准备好了')
+          .fontSize(FONT.caption)
+          .fontColor($r('app.color.on_primary'))
+          .opacity(0.85)
+          .margin({ top: SPACE.xs })
       } else {
+        // daysLeft < 0 且已设置日期 → 考试已结束（之前被误判为「未设置」）
         Text('考试已结束')
           .fontSize(FONT.title)
           .fontWeight(FontWeight.Medium)
@@ -717,5 +723,65 @@ struct StudyPlan {
       .margin({ top: SPACE.sm })
     }
     .width('100%')
+  }
+}
+
+// 预览专用：mock 倒计时 + 任务列表，Previewer 无需 prefs
+@Preview
+@Component
+struct StudyPlanPreview {
+  build() {
+    Column() {
+      Column() {
+        Text('距离考试')
+          .fontSize(13)
+          .fontColor('#80FFFFFF')
+        Text('15')
+          .fontSize(72)
+          .fontWeight(FontWeight.Bold)
+          .fontColor('#FFFFFF')
+        Text('天')
+          .fontSize(14)
+          .fontColor('#CCFFFFFF')
+          .margin({ top: 4 })
+      }
+      .width('90%')
+      .padding(SPACE.lg)
+      .borderRadius(RADIUS.lg)
+      .linearGradient({
+        angle: 135,
+        colors: [[$r('app.color.brand'), 0.0], [$r('app.color.brand_dark'), 1.0]]
+      })
+      .alignItems(HorizontalAlign.Center)
+
+      Column() {
+        Text('复习任务清单')
+          .fontSize(16)
+          .fontWeight(FontWeight.Bold)
+          .fontColor($r('app.color.text_primary'))
+          .margin({ bottom: SPACE.sm })
+        Text('☑ 综合分析能力')
+          .fontSize(14)
+          .fontColor($r('app.color.text_secondary'))
+        Text('☐ 组织管理能力')
+          .fontSize(14)
+          .fontColor($r('app.color.text_primary'))
+          .margin({ top: 6 })
+        Text('☐ 人际沟通能力')
+          .fontSize(14)
+          .fontColor($r('app.color.text_primary'))
+          .margin({ top: 6 })
+      }
+      .width('90%')
+      .padding(SPACE.lg)
+      .backgroundColor($r('app.color.surface'))
+      .borderRadius(RADIUS.md)
+      .margin({ top: SPACE.lg })
+      .alignItems(HorizontalAlign.Start)
+    }
+    .width('100%')
+    .height('100%')
+    .backgroundColor($r('app.color.background'))
+    .padding(16)
   }
 }

@@ -4,7 +4,7 @@ import { preferences } from '@kit.ArkData';
 import { DataStore } from '../model/DataStore';
 import { AppData, PracticeSession } from '../model/Types';
 import { BackHeader } from '../utils/BackHeader';
-import { RADIUS } from '../utils/Theme';
+import { RADIUS, SPACE, SAFE_AREA_TYPES, SAFE_AREA_EDGES } from '../utils/Theme';
 import { IconTile, EmptyState } from '../utils/Ui';
 
 const PREF_NAME: string = 'practice';
@@ -58,6 +58,9 @@ struct ExamRecord {
     const s: number = sec % 60;
     return `${m}:${s < 10 ? '0' + s : '' + s}`;
   }
+
+  @StorageProp('safeTop') safeTop: number = 0;
+  @StorageProp('safeBottom') safeBottom: number = 0;
 
   build() {
     Column() {
@@ -119,5 +122,62 @@ struct ExamRecord {
     .width('100%')
     .height('100%')
     .backgroundColor($r('app.color.background'))
+      .expandSafeArea(SAFE_AREA_TYPES, SAFE_AREA_EDGES)
+      .padding({ top: this.safeTop, bottom: this.safeBottom })
+  }
+}
+
+// 预览专用：mock 演练记录，Previewer 无需 prefs
+@Preview
+@Component
+struct ExamRecordPreview {
+  build() {
+    Column() {
+      Row() {
+        Text('←')
+          .fontSize(20)
+          .fontColor($r('app.color.text_primary'))
+        Text('真题演练记录')
+          .fontSize(17)
+          .fontWeight(FontWeight.Medium)
+          .fontColor($r('app.color.text_primary'))
+          .margin({ left: 12 })
+      }
+      .width('100%')
+      .padding(SPACE.lg)
+
+      Column() {
+        Row() {
+          Column() {
+            Text('综合分析专项')
+              .fontSize(15)
+              .fontWeight(FontWeight.Medium)
+              .fontColor($r('app.color.text_primary'))
+            Text('2026-07-20 · 3 题')
+              .fontSize(12)
+              .fontColor($r('app.color.text_secondary'))
+              .margin({ top: 4 })
+          }
+          .layoutWeight(1)
+          .alignItems(HorizontalAlign.Start)
+          Text('已评')
+            .fontSize(12)
+            .fontColor($r('app.color.brand'))
+            .padding({ left: 10, right: 10, top: 4, bottom: 4 })
+            .backgroundColor($r('app.color.brand_light'))
+            .borderRadius(RADIUS.pill)
+        }
+        .width('100%')
+        .alignItems(VerticalAlign.Center)
+      }
+      .width('90%')
+      .padding(SPACE.md)
+      .backgroundColor($r('app.color.surface'))
+      .borderRadius(RADIUS.md)
+    }
+    .width('100%')
+    .height('100%')
+    .backgroundColor($r('app.color.background'))
+    .padding({ top: 16 })
   }
 }

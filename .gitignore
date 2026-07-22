@@ -21,3 +21,9 @@ _sync_*.log
 # OS
 .DS_Store
 Thumbs.db
+
+# 预览 / 分析 / 生成产物（非源码，禁止入库）
+/.appanalyzer/
+/entry/.preview/
+/generated-images/
+/_diff_practice.txt

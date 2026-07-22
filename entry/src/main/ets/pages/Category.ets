@@ -4,7 +4,7 @@ import { common } from '@kit.AbilityKit';
 import { DataStore } from '../model/DataStore';
 import { AppData, Article, Question } from '../model/Types';
 import { UserTagStore } from '../utils/UserTagStore';
-import { FONT, RADIUS, SPACE } from '../utils/Theme';
+import { FONT, RADIUS, SPACE, SAFE_AREA_TYPES, SAFE_AREA_EDGES } from '../utils/Theme';
 import { IconTile, TagChip, SectionTitle, PageHero, EmptyState } from '../utils/Ui';
 
 // 预缓存分组项接口（ArkTS strict 禁止对象字面量作类型声明，必须用 interface）
@@ -89,6 +89,7 @@ export struct CategoryView {
   @Builder groupHeader(title: string) {
     SectionTitle({ title: title })
       .backgroundColor($r('app.color.background'))
+      .expandSafeArea(SAFE_AREA_TYPES, SAFE_AREA_EDGES)
       .width('100%')
       .padding({ top: SPACE.md })
   }
@@ -218,6 +219,9 @@ export struct CategoryView {
     .margin({ bottom: SPACE.sm })
   }
 
+  @StorageProp('safeTop') safeTop: number = 0;
+  @StorageProp('safeBottom') safeBottom: number = 0;
+
   build() {
     Column() {
       // 品牌头部
@@ -277,8 +281,54 @@ export struct CategoryView {
         EmptyState({ emoji: '⏳', text: '加载中…' })
       }
     }
+  .width('100%')
+  .height('100%')
+  .backgroundColor($r('app.color.background'))
+    .expandSafeArea(SAFE_AREA_TYPES, SAFE_AREA_EDGES)
+    .padding({ top: this.safeTop, bottom: this.safeBottom })
+  }
+}
+
+// 预览专用：使用 mock 素材数据，Previewer 无需 DataStore/router
+@Preview
+@Component
+struct CategoryPreview {
+  build() {
+    Column() {
+      Row() {
+        Text('素材')
+          .fontSize(22)
+          .fontWeight(FontWeight.Bold)
+          .fontColor($r('app.color.text_primary'))
+      }
+      .width('100%')
+      .padding({ left: SPACE.lg, top: SPACE.md, bottom: SPACE.sm })
+
+      Column() {
+        Text('考情')
+          .fontSize(13)
+          .fontColor($r('app.color.text_secondary'))
+          .margin({ bottom: SPACE.sm })
+        Column() {
+          Text('鹤壁市面试考情速览')
+            .fontSize(16)
+            .fontColor($r('app.color.text_primary'))
+            .margin({ bottom: 4 })
+          Text('结构化面试 · 3 道题 · 共 15 分钟')
+            .fontSize(13)
+            .fontColor($r('app.color.text_tertiary'))
+        }
+        .width('100%')
+        .padding(SPACE.md)
+        .backgroundColor($r('app.color.surface'))
+        .borderRadius(RADIUS.md)
+      }
+      .width('100%')
+      .padding({ left: SPACE.lg, right: SPACE.lg })
+    }
     .width('100%')
     .height('100%')
     .backgroundColor($r('app.color.background'))
+    .padding(16)
   }
 }

@@ -6,7 +6,7 @@ import { common } from '@kit.AbilityKit';
 import { DataStore } from '../model/DataStore';
 import { AppData, Question, MockSet, PracticeSession } from '../model/Types';
 import { preferences } from '@kit.ArkData';
-import { RADIUS, SPACE } from '../utils/Theme';
+import { RADIUS, SPACE, SAFE_AREA_TYPES, SAFE_AREA_EDGES } from '../utils/Theme';
 import { RecorderBar } from '../utils/RecorderBar';
 import { PageHero, IconTile, SectionTitle } from '../utils/Ui';
 import { fileIo } from '@kit.CoreFileKit';
@@ -35,6 +35,9 @@ export struct PracticeView {
   @State kw: string = '';                      // 顶部搜索框
   private pref: preferences.Preferences | null = null;
   private timer: number = 0;
+  private tStartMs: number = 0;      // 计时起点（墙钟毫秒）：总用时按真实时间算，规避 setTimeout 累积漂移
+  private segEndMs: number = 0;      // 当前分段（思考/作答）结束的墙钟时间
+  private timedOut: boolean = false; // 作答是否已响过超时提示（避免重复振动）
 
   // 当前题 id（getter，便于笔记/自评绑定）；读 curQ 避免 getter 内索引 @State 数组
   get curId(): string {
@@ -118,29 +121,41 @@ export struct PracticeView {
     }
   }
 
-  // 递归 setTimeout 计时主循环：每秒一跳、独立调度，比 setInterval 更稳（规避任何潜在丢失/只触发一次）
+  // 墙钟基准计时主循环：每跳用 Date.now() 反推剩余/总用时，
+  // 彻底规避 setTimeout 的累积漂移与「后台/锁屏被系统节流」导致的倒计时落后
   private tick(): void {
     try {
-      this.elapsed++;          // 整卷总用时累加（含超时）
-      this.remain--;          // 当前分段倒计时
-      hilog.info(0x1000, 'Practice', 'tick elapsed=%{public}d remain=%{public}d stage=%{public}s',
-        this.elapsed, this.remain, this.stage);
-      if (this.remain <= 0) {
-        if (this.stage === 'think') {
-          // 思考结束 → 进入作答，重置分段计时并响提示音
+      const now: number = Date.now();
+      // 总用时按真实墙钟计算：即使某跳被系统延迟/节流，也不会累积误差
+      this.elapsed = Math.max(0, Math.floor((now - this.tStartMs) / 1000));
+      // 当前分段剩余（向上取整）：作答超时后自然变负，用于显示「超时 Xs」
+      const rem: number = Math.ceil((this.segEndMs - now) / 1000);
+      if (this.stage === 'think') {
+        if (now >= this.segEndMs) {
+          // 思考结束 → 进入作答：按墙钟重设分段终点并响提示音
           this.stage = 'speak';
-          this.remain = this.speakSec;   // 当前题作答时长（curQ 已缓存，安全，不走整卷值）
+          this.timedOut = false;
+          this.segEndMs = now + this.speakSec * 1000;   // curQ 已缓存，speakSec 为单题值
+          this.remain = this.speakSec;
           this.beep('start');
-        } else if (this.remain === 0) {
-          // 作答时间刚到 → 响提示音（不强制跳题，给用户缓冲；remain 继续变负显示超时）
+        } else {
+          this.remain = rem;
+        }
+      } else {
+        this.remain = rem;
+        if (rem <= 0 && !this.timedOut) {
+          // 作答时间刚到 → 只响一次提示音（不强制跳题，remain 继续变负显示超时）
+          this.timedOut = true;
           this.beep('timeout');
         }
       }
+      hilog.info(0x1000, 'Practice', 'tick elapsed=%{public}d remain=%{public}d stage=%{public}s',
+        this.elapsed, this.remain, this.stage);
     } catch (e) {
       hilog.error(0x1000, 'Practice', 'tick 异常 %{public}s', JSON.stringify(e));
     }
-    // 无论本跳是否异常，都调度下一跳（1 秒后）
-    this.timer = setTimeout((): void => { this.tick(); }, 1000);
+    // 每 500ms 一跳：显示更跟手、切段/超时判定更精确；计时结果始终以墙钟为准
+    this.timer = setTimeout((): void => { this.tick(); }, 500);
   }
 
   // 读该题的本地语音识别转写（RecorderBar 存的 rec_<id>.txt）
@@ -161,15 +176,24 @@ export struct PracticeView {
     this.clearTimer();
     this.timerStarted = true;          // 标记：用户已开始答题，UI 从待机态切到倒计
     this.stage = 'think';
+    this.timedOut = false;
+    const now: number = Date.now();
+    this.tStartMs = now;               // 总用时起点（墙钟）
+    this.segEndMs = now + this.thinkSec * 1000; // 思考分段终点（墙钟）
     this.remain = this.thinkSec;      // 当前题单题思考时长（非整卷 totalThink）
-    // 1 秒后启动第一跳，之后由 tick() 自行递归调度
-    this.timer = setTimeout((): void => { this.tick(); }, 1000);
+    // 500ms 后启动第一跳，之后由 tick() 自行递归调度（墙钟计时，无漂移）
+    this.timer = setTimeout((): void => { this.tick(); }, 500);
   }
 
   // 切到下一题/上一题时重置为当前题单题思考倒计时（整卷 elapsed 不清零，timerStarted 保持）
   private resetStage(): void {
     this.stage = 'think';
+    this.timedOut = false;
     this.remain = this.thinkSec;   // 当前题单题思考时长，随题目切换而清零
+    if (this.timerStarted) {
+      // 计时进行中切题：分段终点按墙钟重设（整卷 elapsed 不清零）
+      this.segEndMs = Date.now() + this.thinkSec * 1000;
+    }
   }
 
   // 时间节点提示：用振动（马达）提醒考生 —— 思考结束切作答、作答超时
@@ -450,6 +474,9 @@ export struct PracticeView {
     .onClick(() => this.onStartSet(s))
   }
 
+  @StorageProp('safeTop') safeTop: number = 0;
+  @StorageProp('safeBottom') safeBottom: number = 0;
+
   build() {
     Column() {
       if (this.phase === 'select') {
@@ -644,6 +671,8 @@ export struct PracticeView {
         .width('100%')
         .height('100%')
         .backgroundColor($r('app.color.background'))
+      .expandSafeArea(SAFE_AREA_TYPES, SAFE_AREA_EDGES)
+      .padding({ top: this.safeTop, bottom: this.safeBottom })
       } else if (this.phase === 'review') {
         // 整卷复盘：逐题出参考答案 + 自评
         Column() {
@@ -743,6 +772,8 @@ export struct PracticeView {
         .width('100%')
         .height('100%')
         .backgroundColor($r('app.color.background'))
+      .expandSafeArea(SAFE_AREA_TYPES, SAFE_AREA_EDGES)
+      .padding({ top: this.safeTop, bottom: this.safeBottom })
       } else {
         // 练习报告
         Column() {
@@ -817,11 +848,15 @@ export struct PracticeView {
         .width('100%')
         .height('100%')
         .backgroundColor($r('app.color.background'))
+      .expandSafeArea(SAFE_AREA_TYPES, SAFE_AREA_EDGES)
+      .padding({ top: this.safeTop, bottom: this.safeBottom })
       }
     }
     .width('100%')
     .height('100%')
     .backgroundColor($r('app.color.background'))
+      .expandSafeArea(SAFE_AREA_TYPES, SAFE_AREA_EDGES)
+      .padding({ top: this.safeTop, bottom: this.safeBottom })
   }
 
   // 辅助：统计某评级数量
@@ -865,5 +900,60 @@ export struct PracticeView {
     .borderRadius(RADIUS.md)
     .shadow({ radius: 8, color: $r('app.color.card_stroke'), offsetY: 2 })
     .alignItems(HorizontalAlign.Center)
+  }
+}
+
+// 预览专用：mock 选套阶段 UI，Previewer 无需 DataStore/router/计时
+@Preview
+@Component
+struct PracticePreview {
+  build() {
+    Column() {
+      Column() {
+        Text('📝')
+          .fontSize(32)
+          .margin({ bottom: 6 })
+        Text('真题模考')
+          .fontSize(22)
+          .fontWeight(FontWeight.Bold)
+          .fontColor($r('app.color.text_primary'))
+        Text('选套限时连做，考完复盘自评')
+          .fontSize(13)
+          .fontColor($r('app.color.text_secondary'))
+          .margin({ top: 4 })
+      }
+      .width('100%')
+      .padding(SPACE.lg)
+      .alignItems(HorizontalAlign.Start)
+
+      Text('共 4 套 · 强化训练 + 历年真题')
+        .fontSize(13)
+        .fontColor($r('app.color.text_secondary'))
+        .padding({ left: SPACE.lg, bottom: SPACE.sm })
+
+      Column() {
+        Column() {
+          Text('综合分析专项 · 历年精选')
+            .fontSize(15)
+            .fontWeight(FontWeight.Medium)
+            .fontColor($r('app.color.text_primary'))
+          Text('3 题 · 鹤壁市 2024')
+            .fontSize(12)
+            .fontColor($r('app.color.text_secondary'))
+            .margin({ top: 4 })
+        }
+        .width('100%')
+        .alignItems(HorizontalAlign.Start)
+      }
+      .width('90%')
+      .padding(14)
+      .backgroundColor($r('app.color.surface'))
+      .borderRadius(RADIUS.md)
+    }
+    .width('100%')
+    .height('100%')
+    .backgroundColor($r('app.color.background'))
+    .padding({ top: 16 })
+    .alignItems(HorizontalAlign.Start)
   }
 }

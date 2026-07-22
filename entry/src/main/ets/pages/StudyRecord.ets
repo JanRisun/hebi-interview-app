@@ -5,7 +5,7 @@ import { preferences } from '@kit.ArkData';
 import { DataStore } from '../model/DataStore';
 import { AppData, Question, RatedItem } from '../model/Types';
 import { BackHeader } from '../utils/BackHeader';
-import { RADIUS } from '../utils/Theme';
+import { RADIUS, SPACE, SAFE_AREA_TYPES, SAFE_AREA_EDGES } from '../utils/Theme';
 import { IconTile, EmptyState } from '../utils/Ui';
 
 const PREF_NAME: string = 'practice';
@@ -58,6 +58,9 @@ struct StudyRecord {
     if (r === '不会') return $r('app.color.danger');
     return $r('app.color.text_tertiary');
   }
+
+  @StorageProp('safeTop') safeTop: number = 0;
+  @StorageProp('safeBottom') safeBottom: number = 0;
 
   build() {
     Column() {
@@ -117,5 +120,57 @@ struct StudyRecord {
     .width('100%')
     .height('100%')
     .backgroundColor($r('app.color.background'))
+      .expandSafeArea(SAFE_AREA_TYPES, SAFE_AREA_EDGES)
+      .padding({ top: this.safeTop, bottom: this.safeBottom })
+  }
+}
+
+// 预览专用：mock 学习记录，Previewer 无需 prefs
+@Preview
+@Component
+struct StudyRecordPreview {
+  build() {
+    Column() {
+      Row() {
+        Text('←')
+          .fontSize(20)
+          .fontColor($r('app.color.text_primary'))
+        Text('学习记录')
+          .fontSize(17)
+          .fontWeight(FontWeight.Medium)
+          .fontColor($r('app.color.text_primary'))
+          .margin({ left: 12 })
+      }
+      .width('100%')
+      .padding(SPACE.lg)
+
+      Column() {
+        Row() {
+          Column() {
+            Text('谈谈你对"躺平"现象的看法')
+              .fontSize(15)
+              .fontColor($r('app.color.text_primary'))
+          }
+          .layoutWeight(1)
+          .alignItems(HorizontalAlign.Start)
+          Text('掌握')
+            .fontSize(12)
+            .fontColor('#FFFFFF')
+            .padding({ left: 10, right: 10, top: 4, bottom: 4 })
+            .backgroundColor('#2DBE60')
+            .borderRadius(RADIUS.pill)
+        }
+        .width('100%')
+        .alignItems(VerticalAlign.Center)
+      }
+      .width('90%')
+      .padding(SPACE.md)
+      .backgroundColor($r('app.color.surface'))
+      .borderRadius(RADIUS.md)
+    }
+    .width('100%')
+    .height('100%')
+    .backgroundColor($r('app.color.background'))
+    .padding({ top: 16 })
   }
 }

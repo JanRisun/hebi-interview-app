@@ -4,7 +4,7 @@ import { DataStore } from '../model/DataStore';
 import { AppData, Article, Question } from '../model/Types';
 import { FavStore } from '../utils/FavStore';
 import { BackHeader } from '../utils/BackHeader';
-import { RADIUS } from '../utils/Theme';
+import { RADIUS, SPACE, SAFE_AREA_TYPES, SAFE_AREA_EDGES } from '../utils/Theme';
 import { IconTile, EmptyState } from '../utils/Ui';
 
 interface FavItem {
@@ -56,6 +56,9 @@ struct Favorites {
     }
     return out;
   }
+
+  @StorageProp('safeTop') safeTop: number = 0;
+  @StorageProp('safeBottom') safeBottom: number = 0;
 
   build() {
     Column() {
@@ -126,5 +129,74 @@ struct Favorites {
     .width('100%')
     .height('100%')
     .backgroundColor($r('app.color.background'))
+      .expandSafeArea(SAFE_AREA_TYPES, SAFE_AREA_EDGES)
+      .padding({ top: this.safeTop, bottom: this.safeBottom })
+  }
+}
+
+// 预览专用：mock 收藏列表，Previewer 无需 FavStore
+@Preview
+@Component
+struct FavoritesPreview {
+  build() {
+    Column() {
+      Row() {
+        Text('←')
+          .fontSize(20)
+          .fontColor($r('app.color.text_primary'))
+        Text('我的收藏')
+          .fontSize(17)
+          .fontWeight(FontWeight.Medium)
+          .fontColor($r('app.color.text_primary'))
+          .margin({ left: 12 })
+      }
+      .width('100%')
+      .padding(SPACE.lg)
+
+      Row() {
+        Text('🔍')
+          .fontSize(14)
+          .fontColor($r('app.color.text_tertiary'))
+        Text('搜索收藏内容')
+          .fontSize(14)
+          .fontColor($r('app.color.text_tertiary'))
+          .margin({ left: 8 })
+      }
+      .width('90%')
+      .height(40)
+      .padding({ left: 12 })
+      .backgroundColor($r('app.color.surface'))
+      .borderRadius(RADIUS.pill)
+
+      Column() {
+        Row() {
+          Text('⭐')
+            .fontSize(20)
+            .margin({ right: 12 })
+          Column() {
+            Text('综合分析类答题框架')
+              .fontSize(15)
+              .fontColor($r('app.color.text_primary'))
+            Text('考情')
+              .fontSize(12)
+              .fontColor($r('app.color.text_secondary'))
+              .margin({ top: 2 })
+          }
+          .layoutWeight(1)
+          .alignItems(HorizontalAlign.Start)
+        }
+        .width('100%')
+        .alignItems(VerticalAlign.Center)
+      }
+      .width('90%')
+      .padding(SPACE.md)
+      .backgroundColor($r('app.color.surface'))
+      .borderRadius(RADIUS.md)
+      .margin({ top: SPACE.md })
+    }
+    .width('100%')
+    .height('100%')
+    .backgroundColor($r('app.color.background'))
+    .padding({ top: 16 })
   }
 }

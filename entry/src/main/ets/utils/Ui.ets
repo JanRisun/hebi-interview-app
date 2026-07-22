@@ -1,6 +1,6 @@
 // 通用 UI 组件库：统一全站视觉语言（图标、标签、分区标题、数据卡、空态、进度环、页面品牌头部）
 // 用法：import { IconTile, TagChip, SectionTitle, StatCard, EmptyState, ProgressRing, PageHero } from '../utils/Ui';
-import { RADIUS, SPACE, FONT } from './Theme';
+import { RADIUS, SPACE, FONT, SAFE_AREA_TYPES } from './Theme';
 
 // 彩色圆角图标块：用 emoji + 品牌色底，避免依赖外部图标资源
 @Component
@@ -190,5 +190,6 @@ export struct PageHero {
     .backgroundColor($r('app.color.brand'))
     .linearGradient({ angle: 135, colors: [[$r('app.color.brand'), 0], [$r('app.color.brand_dark'), 1]] })
     .borderRadius({ topLeft: 0, topRight: 0, bottomLeft: RADIUS.lg, bottomRight: RADIUS.lg })
+    .expandSafeArea(SAFE_AREA_TYPES, [SafeAreaEdge.TOP])
   }
 }
