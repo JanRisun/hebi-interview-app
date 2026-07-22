@@ -8,7 +8,7 @@ import { preferences } from '@kit.ArkData';
 import { RADIUS, SPACE, SAFE_AREA_TYPES, SAFE_AREA_EDGES } from '../utils/Theme';
 import { LazyDataSource } from '../utils/LazySource';
 import { RecorderBar } from '../utils/RecorderBar';
-import { PageHero, IconTile, SectionTitle } from '../utils/Ui';
+import { PageHero, PageHeader, IconTile, SectionTitle } from '../utils/Ui';
 import { fileIo } from '@kit.CoreFileKit';
 import { vibrator } from '@kit.SensorServiceKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
@@ -489,7 +489,7 @@ export struct PracticeView {
     Column() {
       if (this.phase === 'select') {
         // 品牌头部
-        PageHero({ emoji: '📝', title: '真题模考', subtitle: '选套限时连做，考完复盘自评' })
+        PageHeader({ title: '真题模考' })
         // 统计
         if (this.data) {
           Text(`共 ${this.sets.length} 套 · 强化训练 + 历年真题`)
@@ -528,6 +528,7 @@ export struct PracticeView {
         }
         .width('92%')
         .layoutWeight(1)
+        // 底部预留 12vp 与"再来一套"按钮的视觉间距；悬浮 Tab 栏空间已由最外层 Column padding 统一处理
       } else if (this.phase === 'exam') {
         // 模考阶段：仅题目 + 计时 + 笔记，锁答案
         Column() {
@@ -865,7 +866,9 @@ export struct PracticeView {
     .height('100%')
     .backgroundColor($r('app.color.background'))
       .expandSafeArea(SAFE_AREA_TYPES, SAFE_AREA_EDGES)
-      .padding({ top: this.safeTop, bottom: this.safeBottom })
+      .padding({ top: this.safeTop, bottom: 88 + this.safeBottom })
+      // 底部预留 88vp 悬浮 Tab 栏空间（高度 56 + 顶部 8 + 底部 12 + 自身 safeBottom），
+      // 避免 phase 内 List/Scroll 最后一行 + 底部按钮被悬浮 Tab 栏遮挡
   }
 
   // 辅助：统计某评级数量

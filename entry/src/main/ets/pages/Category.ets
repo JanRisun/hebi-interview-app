@@ -5,7 +5,7 @@ import { AppData, Article, Question } from '../model/Types';
 import { UserTagStore } from '../utils/UserTagStore';
 import { LazyDataSource } from '../utils/LazySource';
 import { FONT, RADIUS, SPACE, SAFE_AREA_TYPES, SAFE_AREA_EDGES } from '../utils/Theme';
-import { IconTile, TagChip, SectionTitle, PageHero, EmptyState } from '../utils/Ui';
+import { IconTile, TagChip, SectionTitle, PageHero, PageHeader, EmptyState } from '../utils/Ui';
 
 // 导航参数透传对象（规避 arkts-no-untyped-obj-literals：字面量必须对应显式声明的接口）
 interface SearchParam { q: string }
@@ -252,7 +252,7 @@ export struct CategoryView {
   build() {
     Column() {
       // 品牌头部
-      PageHero({ emoji: '📚', title: '备考素材', subtitle: '知识点 + 真题，分类速览高效记' })
+      PageHeader({ title: '素材' })
 
       // 概览数据条
       if (this.data) {
@@ -312,7 +312,9 @@ export struct CategoryView {
   .height('100%')
   .backgroundColor($r('app.color.background'))
     .expandSafeArea(SAFE_AREA_TYPES, SAFE_AREA_EDGES)
-    .padding({ top: this.safeTop, bottom: this.safeBottom })
+    .padding({ top: this.safeTop, bottom: 88 + this.safeBottom })
+    // 底部预留 88vp 悬浮 Tab 栏空间（高度 56 + 顶部 8 + 底部 12 + 自身 safeBottom），
+    // 避免内部 List 最后一行被悬浮 Tab 栏遮挡
   }
 }
 

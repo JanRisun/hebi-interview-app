@@ -4,8 +4,7 @@ import { Article, Question, Section } from '../model/Types';
 import { FavStore } from '../utils/FavStore';
 import { UserTagStore } from '../utils/UserTagStore';
 import { RecorderBar } from '../utils/RecorderBar';
-import { TtsButton } from '../utils/TtsButton';
-import { TtsFloatButton } from '../utils/TtsFloatButton';
+import { ReaderIcon } from '../utils/SpeechReader';
 import { BackHeader } from '../utils/BackHeader';
 import { SectionTitle, TagChip } from '../utils/Ui';
 import { FONT, RADIUS, SPACE, SAFE_AREA_TYPES, SAFE_AREA_EDGES } from '../utils/Theme';
@@ -171,7 +170,9 @@ export struct Detail {
         }
         // 语音播报：整篇知识点（标题 + 各小节标题与正文）
         Row() {
-          TtsButton({
+          ReaderIcon({
+            readId: this.itemId + ':full',
+            title: this.article!.title,
             text: this.article!.title + '。' +
               this.article!.sections.map((s: Section) => (s.heading ? s.heading + '。' : '') + s.body).join('。'),
             label: '朗读全文'
@@ -243,7 +244,12 @@ export struct Detail {
         }
         // 语音播报：题目
         Row() {
-          TtsButton({ text: this.question!.prompt, label: '朗读题目' })
+          ReaderIcon({
+            readId: this.itemId + ':q',
+            title: this.question!.title,
+            text: this.question!.prompt,
+            label: '朗读题目'
+          })
         }
         .margin({ bottom: SPACE.md })
         // 我的标记（用户自定义标签，持久化）
@@ -260,7 +266,12 @@ export struct Detail {
         if (this.showAnswer) {
           Row() {
             SectionTitle({ title: '参考答案 · 逐字稿' }) {
-              TtsButton({ text: this.question!.answerScript, label: '朗读解析' })
+              ReaderIcon({
+                readId: this.itemId + ':ans',
+                title: this.question!.title + ' · 参考答案',
+                text: this.question!.answerScript,
+                label: '朗读解析'
+              })
             }
           }
           .width('100%')
@@ -291,42 +302,34 @@ export struct Detail {
   @StorageProp('safeBottom') safeBottom: number = 0;
 
   build() {
-    // Stack 用 BottomStart 对齐：悬浮按钮默认贴左下角，translate 做微调偏移
-    Stack({ alignContent: Alignment.BottomStart }) {
-      // 底层：页面内容
-      Column() {
-        BackHeader({ title: this.kind === 'article' ? '知识点' : '真题详情' }) {
-          Row() {
-            Text(this.fav ? '★' : '☆')
-              .fontSize(FONT.title)
-              .fontColor(this.fav ? $r('app.color.favorite') : $r('app.color.text_tertiary'))
-          }
-          .padding({ left: SPACE.md, right: SPACE.sm })
-          .onClick(() => this.toggleFav())
+    // 朗读改用系统朗读控件 TextReader（自带悬浮播控面板），页面内不再自绘悬浮按钮
+    Column() {
+      BackHeader({ title: this.kind === 'article' ? '知识点' : '真题详情' }) {
+        Row() {
+          Text(this.fav ? '★' : '☆')
+            .fontSize(FONT.title)
+            .fontColor(this.fav ? $r('app.color.favorite') : $r('app.color.text_tertiary'))
         }
-
-        if (this.article) {
-          this.articleView()
-        } else if (this.question) {
-          this.questionView()
-        } else {
-          Text('加载中…')
-            .fontSize(FONT.bodySm)
-            .fontColor($r('app.color.text_secondary'))
-            .margin(SPACE.xl)
-        }
+        .padding({ left: SPACE.md, right: SPACE.sm })
+        .onClick(() => this.toggleFav())
       }
-      .width('100%')
-      .height('100%')
-      .backgroundColor($r('app.color.background'))
-      .expandSafeArea(SAFE_AREA_TYPES, SAFE_AREA_EDGES)
-      .padding({ top: this.safeTop, bottom: this.safeBottom })
 
-      // 上层：TTS 悬浮播控按钮（全局覆盖）
-      TtsFloatButton()
+      if (this.article) {
+        this.articleView()
+      } else if (this.question) {
+        this.questionView()
+      } else {
+        Text('加载中…')
+          .fontSize(FONT.bodySm)
+          .fontColor($r('app.color.text_secondary'))
+          .margin(SPACE.xl)
+      }
     }
     .width('100%')
     .height('100%')
+    .backgroundColor($r('app.color.background'))
+    .expandSafeArea(SAFE_AREA_TYPES, SAFE_AREA_EDGES)
+    .padding({ top: this.safeTop, bottom: this.safeBottom })
   }
 }
 

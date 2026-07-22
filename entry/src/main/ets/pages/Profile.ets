@@ -4,7 +4,7 @@ import { preferences } from '@kit.ArkData';
 import { DataStore } from '../model/DataStore';
 import { AppData, Question, RatedItem, PracticeSession } from '../model/Types';
 import { FONT, RADIUS, SPACE, SAFE_AREA_TYPES, SAFE_AREA_EDGES } from '../utils/Theme';
-import { PageHero, IconTile, StatCard } from '../utils/Ui';
+import { PageHero, PageHeader, IconTile, StatCard } from '../utils/Ui';
 
 const PREF_NAME: string = 'practice';
 
@@ -76,6 +76,32 @@ export struct ProfileView {
     this.pageStack.pushPathByName('StudyPlan', {} as Record<string, Object>);
   }
 
+  // 用户信息卡：头像 + 昵称 + 地区，作为个人中心顶部内容，紧贴标题栏
+  @Builder userCard() {
+    Row() {
+      IconTile({ emoji: '🧑', bg: $r('app.color.brand_light'), fg: $r('app.color.brand'), dim: 56 })
+        .margin({ right: SPACE.md })
+      Column() {
+        Text('面试备考人')
+          .fontSize(FONT.body)
+          .fontWeight(FontWeight.Bold)
+          .fontColor($r('app.color.text_primary'))
+        Text('鹤壁市 · 综合岗位')
+          .fontSize(FONT.caption)
+          .fontColor($r('app.color.text_secondary'))
+          .margin({ top: SPACE.xs })
+      }
+      .alignItems(HorizontalAlign.Start)
+      .layoutWeight(1)
+    }
+    .width('100%')
+    .padding({ left: SPACE.md, right: SPACE.md, top: SPACE.sm, bottom: SPACE.md })
+    .backgroundColor($r('app.color.surface'))
+    .borderRadius(RADIUS.md)
+    .margin({ bottom: SPACE.sm })
+    .shadow({ radius: 10, color: $r('app.color.card_stroke'), offsetY: 2 })
+  }
+
   // 通用入口行：图标块 + 标题 + 副标题 + 箭头
   @Builder entryRow(emoji: string, bg: Resource, fg: Resource, title: string, sub: string, cb: () => void) {
     Row() {
@@ -113,10 +139,13 @@ export struct ProfileView {
   build() {
     Column() {
       // 品牌头部
-      PageHero({ emoji: '👤', title: '个人中心', subtitle: '你的学习档案与记录' })
+      PageHeader({ title: '我的' })
 
       Scroll() {
         Column() {
+          // 用户信息（头像 + 昵称 + 地区），紧贴标题排布，消除顶部大留白
+          this.userCard()
+
           // 学习概览：数据卡
           if (this.data) {
             Row() {
@@ -128,7 +157,7 @@ export struct ProfileView {
                 .margin({ left: SPACE.sm })
             }
             .width('100%')
-            .margin({ top: SPACE.md, bottom: SPACE.sm })
+            .margin({ top: SPACE.sm, bottom: SPACE.sm })
           }
 
           // 入口卡片
@@ -142,12 +171,16 @@ export struct ProfileView {
       }
       .layoutWeight(1)
       .width('100%')
+      // 上提覆盖 PageHeader 底部留白（仅背景，无内容），消除标题栏与内容的大间距
+      .margin({ top: -SPACE.sm })
     }
     .width('100%')
     .height('100%')
     .backgroundColor($r('app.color.background'))
       .expandSafeArea(SAFE_AREA_TYPES, SAFE_AREA_EDGES)
-      .padding({ top: this.safeTop, bottom: this.safeBottom })
+      .padding({ top: this.safeTop, bottom: 88 + this.safeBottom })
+      // 底部预留 88vp 悬浮 Tab 栏空间（高度 56 + 顶部 8 + 底部 12 + 自身 safeBottom），
+      // 避免最后一张入口卡片被悬浮 Tab 栏遮挡
   }
 }
 

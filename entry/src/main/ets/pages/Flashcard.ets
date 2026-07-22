@@ -3,9 +3,8 @@ import { common } from '@kit.AbilityKit';
 import { DataStore } from '../model/DataStore';
 import { Section } from '../model/Types';
 import { FONT, RADIUS, SPACE, SAFE_AREA_TYPES, SAFE_AREA_EDGES } from '../utils/Theme';
-import { TtsButton } from '../utils/TtsButton';
-import { TtsFloatButton } from '../utils/TtsFloatButton';
-import { PageHero, EmptyState, IconTile, ProgressRing } from '../utils/Ui';
+import { ReaderIcon } from '../utils/SpeechReader';
+import { PageHero, PageHeader, EmptyState, IconTile, ProgressRing } from '../utils/Ui';
 
 interface Card {
   title: string;
@@ -61,12 +60,10 @@ export struct FlashcardView {
   @StorageProp('safeBottom') safeBottom: number = 0;
 
   build() {
-    // Stack 用 BottomStart 对齐：悬浮按钮默认贴左下角，translate 做微调偏移
-    Stack({ alignContent: Alignment.BottomStart }) {
-      // 底层：速记卡页面内容
-      Column() {
-        // 品牌头部
-        PageHero({ emoji: '🎴', title: '速记卡', subtitle: '凭记忆回想，翻转核对详解' })
+    // 朗读改用系统朗读控件 TextReader（自带悬浮播控面板），页面内不再自绘悬浮按钮
+    Column() {
+      // 品牌头部
+      PageHeader({ title: '速记卡' })
 
         if (this.cards.length === 0) {
           EmptyState({ emoji: '⏳', text: '加载中…' })
@@ -181,8 +178,10 @@ export struct FlashcardView {
           .margin({ top: 20 })
 
           // 语音播报：朗读当前可见面（正面要点 / 背面详解）
-          // 直接作为 Column 子项（不用 Row 包裹），让 TtsButton 按内容宽度自适应成紧凑药丸
-          TtsButton({
+          // id 含 idx 与翻面状态，切卡/翻面即视为新的朗读目标
+          ReaderIcon({
+            readId: 'card:' + this.idx + (this.flipped ? ':b' : ':f'),
+            title: this.cards[this.idx].title,
             text: this.flipped ? this.cards[this.idx].body : this.cards[this.idx].title,
             label: '朗读当前面'
           })
@@ -198,13 +197,9 @@ export struct FlashcardView {
       .height('100%')
       .backgroundColor($r('app.color.background'))
       .expandSafeArea(SAFE_AREA_TYPES, SAFE_AREA_EDGES)
-      .padding({ top: this.safeTop, bottom: this.safeBottom })
-
-      // 上层：TTS 悬浮播控按钮
-      TtsFloatButton()
-    }
-    .width('100%')
-    .height('100%')
+      .padding({ top: this.safeTop, bottom: 88 + this.safeBottom })
+      // 底部预留 88vp 悬浮 Tab 栏空间（高度 56 + 顶部 8 + 底部 12 + 自身 safeBottom），
+      // 避免按钮/TTS/提示被悬浮 Tab 栏遮挡
   }
 }
 

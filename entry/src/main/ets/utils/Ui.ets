@@ -154,6 +154,28 @@ export struct ProgressRing {
   }
 }
 
+// 通用页面头部：纯色大标题，紧贴状态栏下方
+// 安全区由外层根 Column 的 expandSafeArea + padding(top: safeTop) 统一管理，PageHeader 自身不处理
+@Component
+export struct PageHeader {
+  @Prop title: string = '';
+
+  build() {
+    Column() {
+      Text(this.title)
+        .fontSize(28)
+        .fontWeight(FontWeight.Bold)
+        .fontColor($r('app.color.text_title'))
+        .maxLines(1)
+        .textOverflow({ overflow: TextOverflow.Ellipsis })
+    }
+    .width('100%')
+    .padding({ left: SPACE.lg, right: SPACE.lg, top: SPACE.xs, bottom: SPACE.sm })
+    .alignItems(HorizontalAlign.Start)
+    .backgroundColor($r('app.color.background'))
+  }
+}
+
 // 页面品牌头部：渐变底 + 图标 + 大标题 + 副标题，用于各 Tab 页顶部，替代孤零零的标题文字
 @Component
 export struct PageHero {

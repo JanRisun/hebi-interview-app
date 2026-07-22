@@ -14,15 +14,15 @@ export struct BackHeader {
 
   build() {
     Row() {
-      // 返回按钮：点击调用 pageStack.pop() 回到上一页（个人中心 Tab）
+      // 返回按钮：系统箭头符号 + 返回文字，点击 pop 回上一页
       Row() {
-        Text('‹')
-          .fontSize(FONT.title)
-          .fontWeight(FontWeight.Bold)
-          .fontColor($r('app.color.brand'))
+        SymbolGlyph($r('sys.symbol.chevron_left'))
+          .fontSize(22)
+          .fontColor([$r('app.color.brand'), $r('app.color.brand'), $r('app.color.brand')])
         Text('返回')
           .fontSize(FONT.body)
           .fontColor($r('app.color.brand'))
+          .margin({ left: SPACE.xs })
       }
       .align(Alignment.Center)
       .padding({ right: SPACE.md })
@@ -37,6 +37,8 @@ export struct BackHeader {
         .fontColor($r('app.color.text_title'))
         .layoutWeight(1)
         .textAlign(TextAlign.Start)
+        .maxLines(1)
+        .textOverflow({ overflow: TextOverflow.Ellipsis })
 
       // 右侧操作区（默认空）
       this.action()

@@ -14,6 +14,7 @@ interface DetailParam { id: string; kind: string }
 const PREF_NAME: string = 'practice';
 
 @Component
+@Entry
 export struct StudyRecord {
   @State rated: RatedItem[] = [];
   @State kw: string = '';
