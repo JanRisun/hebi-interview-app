@@ -1,11 +1,14 @@
-import { router } from '@kit.ArkUI';
 import { common } from '@kit.AbilityKit';
 import { DataStore } from '../model/DataStore';
 import { AppData, Article, Question } from '../model/Types';
 import { FavStore } from '../utils/FavStore';
 import { BackHeader } from '../utils/BackHeader';
+import { LazyDataSource } from '../utils/LazySource';
 import { RADIUS, SPACE, SAFE_AREA_TYPES, SAFE_AREA_EDGES } from '../utils/Theme';
 import { IconTile, EmptyState } from '../utils/Ui';
+
+// 导航参数透传对象（规避 arkts-no-untyped-obj-literals）
+interface DetailParam { id: string; kind: string }
 
 interface FavItem {
   id: string;
@@ -14,11 +17,13 @@ interface FavItem {
   sub: string;
 }
 
-@Entry
 @Component
-struct Favorites {
+export struct Favorites {
   @State items: FavItem[] = [];
   @State kw: string = '';   // 搜索关键词
+  // 数据源刷新靠 IDataSource 的 onDataReloaded 通知，无需 @State（@State 代理会破坏私有字段）
+  ds: LazyDataSource<FavItem> = new LazyDataSource<FavItem>([]);
+  @Consume pageStack: NavPathStack;
 
   aboutToAppear(): void {
     const ctx = getContext(this) as common.UIAbilityContext;
@@ -38,7 +43,13 @@ struct Favorites {
         }
       });
       this.items = list;
+      this.refresh();
     });
+  }
+
+  // 同步过滤结果到 LazyForEach 数据源
+  private refresh(): void {
+    this.ds.setData(this.filterFavs());
   }
 
   // 按标题或来源/分类过滤收藏
@@ -69,6 +80,7 @@ struct Favorites {
         TextInput({ placeholder: '搜索收藏的标题或来源', text: this.kw })
           .onChange((v: string) => {
             this.kw = v;
+            this.refresh();
           })
           .layoutWeight(1)
           .height(40)
@@ -85,7 +97,7 @@ struct Favorites {
         EmptyState({ emoji: '🔍', text: `没有匹配「${this.kw}」的收藏` })
       } else {
         List() {
-          ForEach(this.filterFavs(), (it: FavItem) => {
+          LazyForEach(this.ds, (it: FavItem) => {
             ListItem() {
               Row() {
                 IconTile({
@@ -118,7 +130,10 @@ struct Favorites {
               .borderRadius(RADIUS.md)
               .margin({ bottom: 8 })
               .shadow({ radius: 10, color: $r('app.color.card_stroke'), offsetY: 2 })
-              .onClick(() => router.pushUrl({ url: 'pages/Detail', params: { id: it.id, kind: it.kind } }))
+              .onClick(() => {
+                const params: DetailParam = { id: it.id, kind: it.kind };
+                this.pageStack.pushPathByName('Detail', params);
+              })
             }
           }, (it: FavItem) => it.id)
         }

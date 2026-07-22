@@ -6,27 +6,33 @@ import { CategoryView } from './Category';
 import { FlashcardView } from './Flashcard';
 import { PracticeView } from './Practice';
 import { ProfileView } from './Profile';
-import { router } from '@kit.ArkUI';
+import { Detail } from './Detail';
+import { SearchPage } from './Search';
+import { Favorites } from './Favorites';
+import { StudyRecord } from './StudyRecord';
+import { ExamRecord } from './ExamRecord';
+import { StudyPlan } from './StudyPlan';
 import { FONT, SPACE, SAFE_AREA_TYPES, SAFE_AREA_EDGES } from '../utils/Theme';
 
 @Entry
 @Component
 struct Index {
   @State current: number = 0;
+  @Provide pageStack: NavPathStack = new NavPathStack();
 
   // 通知/深链启动：若来自今日提醒(target=today)，自动直达备考计划页
   aboutToAppear(): void {
     const target: string = AppStorage.get<string>('launchTarget') ?? '';
     if (target === 'today') {
       AppStorage.set('launchTarget', '');
-      router.replaceUrl({ url: 'pages/StudyPlan' });
+      this.pageStack.pushPathByName('StudyPlan', {} as Record<string, Object>);
     }
   }
 
   // 自定义底部 Tab 按钮（SymbolGlyph 系统符号 + 文字 + 选中指示器）
-  @Builder tabBarItem(idx: number, iconStr: string, label: string) {
+  @Builder tabBarItem(idx: number, icon: Resource, label: string) {
     Column() {
-      SymbolGlyph($r(iconStr))
+      SymbolGlyph(icon)
         .fontSize(this.current === idx ? 24 : 22)
         .fontColor(this.current === idx
           ? [$r('app.color.brand'), $r('app.color.brand'), $r('app.color.brand')]
@@ -52,26 +58,61 @@ struct Index {
   @StorageProp('safeTop') safeTop: number = 0;
   @StorageProp('safeBottom') safeBottom: number = 0;
 
+  // 路由表：routeName -> NavDestination 组件（参数经 routeMap 的 param 透传）
+  @Builder
+  private routeMap(name: string, param: Object) {
+    if (name === 'Detail') {
+      NavDestination() {
+        Detail({ params: param })
+      }.hideTitleBar(true)
+    } else if (name === 'Search') {
+      NavDestination() {
+        SearchPage({ params: param })
+      }.hideTitleBar(true)
+    } else if (name === 'Favorites') {
+      NavDestination() {
+        Favorites()
+      }.hideTitleBar(true)
+    } else if (name === 'StudyRecord') {
+      NavDestination() {
+        StudyRecord()
+      }.hideTitleBar(true)
+    } else if (name === 'ExamRecord') {
+      NavDestination() {
+        ExamRecord()
+      }.hideTitleBar(true)
+    } else if (name === 'StudyPlan') {
+      NavDestination() {
+        StudyPlan()
+      }.hideTitleBar(true)
+    } else if (name === 'Practice') {
+      NavDestination() {
+        PracticeView({ params: param })
+      }.hideTitleBar(true)
+    }
+  }
+
   build() {
-    // 根容器：包裹 4 Tab 内容（悬浮播控按钮不放主框架，由各具体页按需叠加）
+    // 根容器：Navigation 路由根 + 4 Tab 内容
+    Navigation(this.pageStack) {
     Stack({ alignContent: Alignment.BottomStart }) {
       Column() {
         Tabs({ barPosition: BarPosition.End }) {
           TabContent() {
             CategoryView()
-          }.tabBar(this.tabBarItem(0, 'sys.symbol.book', '素材'))
+          }.tabBar(this.tabBarItem(0, $r('sys.symbol.book'), '素材'))
 
           TabContent() {
             FlashcardView()
-          }.tabBar(this.tabBarItem(1, 'sys.symbol.bookmark', '速记卡'))
+          }.tabBar(this.tabBarItem(1, $r('sys.symbol.bookmark'), '速记卡'))
 
           TabContent() {
             PracticeView()
-          }.tabBar(this.tabBarItem(2, 'sys.symbol.checkmark_circle', '真题模考'))
+          }.tabBar(this.tabBarItem(2, $r('sys.symbol.checkmark_circle'), '真题模考'))
 
           TabContent() {
             ProfileView()
-          }.tabBar(this.tabBarItem(3, 'sys.symbol.person', '个人中心'))
+          }.tabBar(this.tabBarItem(3, $r('sys.symbol.person'), '个人中心'))
         }
         .barPosition(BarPosition.End)
         .onChange((idx: number) => {
@@ -91,6 +132,10 @@ struct Index {
     }
     .width('100%')
     .height('100%')
+    }
+    .hideTitleBar(true)
+    .navDestination(this.routeMap)
+    .mode(NavigationMode.Stack)
   }
 }
 
@@ -99,10 +144,11 @@ struct Index {
 @Component
 struct IndexPreview {
   @State current: number = 0;
+  @Provide pageStack: NavPathStack = new NavPathStack();
 
-  @Builder tabBarItem(idx: number, iconStr: string, label: string) {
+  @Builder tabBarItem(idx: number, icon: Resource, label: string) {
     Column() {
-      SymbolGlyph($r(iconStr))
+      SymbolGlyph(icon)
         .fontSize(this.current === idx ? 24 : 22)
         .fontColor(this.current === idx
           ? [$r('app.color.brand'), $r('app.color.brand'), $r('app.color.brand')]
@@ -129,10 +175,10 @@ struct IndexPreview {
     Stack({ alignContent: Alignment.BottomStart }) {
       Column() {
         Tabs({ barPosition: BarPosition.End }) {
-          TabContent() { CategoryView() }.tabBar(this.tabBarItem(0, 'sys.symbol.book', '素材'))
-          TabContent() { FlashcardView() }.tabBar(this.tabBarItem(1, 'sys.symbol.bookmark', '速记卡'))
-          TabContent() { PracticeView() }.tabBar(this.tabBarItem(2, 'sys.symbol.checkmark_circle', '真题模考'))
-          TabContent() { ProfileView() }.tabBar(this.tabBarItem(3, 'sys.symbol.person', '个人中心'))
+          TabContent() { CategoryView() }.tabBar(this.tabBarItem(0, $r('sys.symbol.book'), '素材'))
+          TabContent() { FlashcardView() }.tabBar(this.tabBarItem(1, $r('sys.symbol.bookmark'), '速记卡'))
+          TabContent() { PracticeView() }.tabBar(this.tabBarItem(2, $r('sys.symbol.checkmark_circle'), '真题模考'))
+          TabContent() { ProfileView() }.tabBar(this.tabBarItem(3, $r('sys.symbol.person'), '个人中心'))
         }
         .barPosition(BarPosition.End)
         .onChange((idx: number) => { this.current = idx; })

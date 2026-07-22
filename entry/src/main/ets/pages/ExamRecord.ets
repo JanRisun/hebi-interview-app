@@ -4,16 +4,18 @@ import { preferences } from '@kit.ArkData';
 import { DataStore } from '../model/DataStore';
 import { AppData, PracticeSession } from '../model/Types';
 import { BackHeader } from '../utils/BackHeader';
+import { LazyDataSource } from '../utils/LazySource';
 import { RADIUS, SPACE, SAFE_AREA_TYPES, SAFE_AREA_EDGES } from '../utils/Theme';
 import { IconTile, EmptyState } from '../utils/Ui';
 
 const PREF_NAME: string = 'practice';
 
-@Entry
 @Component
-struct ExamRecord {
+export struct ExamRecord {
   @State sessions: PracticeSession[] = [];
   @State kw: string = '';
+  // 数据源刷新靠 IDataSource 的 onDataReloaded 通知，无需 @State（@State 代理会破坏私有字段）
+  ds: LazyDataSource<PracticeSession> = new LazyDataSource<PracticeSession>([]);
 
   aboutToAppear(): void {
     const ctx = getContext(this) as common.UIAbilityContext;
@@ -34,8 +36,14 @@ struct ExamRecord {
           }
         }
         this.sessions = list;
+        this.refresh();
       });
     });
+  }
+
+  // 同步过滤结果到 LazyForEach 数据源
+  private refresh(): void {
+    this.ds.setData(this.filterSessions());
   }
 
   // 按套题标题过滤
@@ -71,6 +79,7 @@ struct ExamRecord {
         TextInput({ placeholder: '搜索套题名称', text: this.kw })
           .onChange((v: string) => {
             this.kw = v;
+            this.refresh();
           })
           .layoutWeight(1)
           .height(40)
@@ -87,7 +96,7 @@ struct ExamRecord {
         EmptyState({ emoji: '🔍', text: `没有匹配「${this.kw}」的套题` })
       } else {
         List() {
-          ForEach(this.filterSessions(), (s: PracticeSession, i: number) => {
+          LazyForEach(this.ds, (s: PracticeSession, i: number) => {
             ListItem() {
               Row() {
                 IconTile({ emoji: '🎯', bg: $r('app.color.brand_light'), fg: $r('app.color.info'), dim: 40 })

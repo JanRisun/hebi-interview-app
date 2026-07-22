@@ -1,12 +1,5 @@
 {
   "src": [
-    "pages/Index",
-    "pages/Search",
-    "pages/Favorites",
-    "pages/StudyRecord",
-    "pages/ExamRecord",
-    "pages/Detail",
-    "pages/StudyPlan",
-    "pages/Practice"
+    "pages/Index"
   ]
 }

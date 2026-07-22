@@ -211,6 +211,24 @@ class _TtsEngineImpl {
     }
   }
 
+  // 跳到下一句（学习强国式「下一个」按钮）：
+  // 不论当前是否处于暂停态，都立即朗读下一段（若已到末尾则结束会话）。
+  // 与 cycleSpeed 不同：next 是"跳过当前"语义，无需新参数，立刻生效。
+  next(): void {
+    if (!this.sessionActive || !this.engine) return;
+    this.segIndex++;
+    if (this.segIndex >= this.sentences.length) {
+      // 没有下一段了：结束会话、收起悬浮按钮
+      this.finishSession();
+      return;
+    }
+    // 立即朗读下一段：清暂停态 → 触发 speakSegment
+    this.paused = false;
+    this.playing = true;
+    this.syncState();
+    this.speakSegment();
+  }
+
   // 注册监听：状态生灭完全由本类显式管理，onStop 不碰状态
   private setListener(): void {
     if (!this.engine) return;

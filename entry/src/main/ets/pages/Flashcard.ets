@@ -1,5 +1,4 @@
 // 速记卡 Tab（百词斩式翻转卡）：左滑下一个、右滑进入我的收藏
-import { router } from '@kit.ArkUI';
 import { common } from '@kit.AbilityKit';
 import { DataStore } from '../model/DataStore';
 import { Section } from '../model/Types';
@@ -18,6 +17,7 @@ export struct FlashcardView {
   @State cards: Card[] = [];
   @State idx: number = 0;
   @State flipped: boolean = false;   // 翻转状态：false=正面(要点) true=背面(详解)
+  @Consume pageStack: NavPathStack;
 
   aboutToAppear(): void {
     DataStore.load(getContext(this) as common.UIAbilityContext).then(() => {
@@ -53,7 +53,7 @@ export struct FlashcardView {
     if (angle < 0) {
       this.go(1);
     } else {
-      router.pushUrl({ url: 'pages/Favorites' });
+      this.pageStack.pushPathByName('Favorites', {} as Record<string, Object>);
     }
   }
 

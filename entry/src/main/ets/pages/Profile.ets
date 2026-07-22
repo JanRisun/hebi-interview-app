@@ -1,5 +1,4 @@
 // 个人中心 Tab：我的收藏 / 我的学习记录 / 我的真题演练记录
-import { router } from '@kit.ArkUI';
 import { common } from '@kit.AbilityKit';
 import { preferences } from '@kit.ArkData';
 import { DataStore } from '../model/DataStore';
@@ -14,6 +13,7 @@ export struct ProfileView {
   @State data: AppData | null = null;
   @State rated: RatedItem[] = [];        // 我的学习记录（自评索引）
   @State sessions: PracticeSession[] = []; // 我的真题演练记录
+  @Consume pageStack: NavPathStack;
 
   aboutToAppear(): void {
     const ctx = getContext(this) as common.UIAbilityContext;
@@ -61,19 +61,19 @@ export struct ProfileView {
   }
 
   private onFavorites(): void {
-    router.pushUrl({ url: 'pages/Favorites' });
+    this.pageStack.pushPathByName('Favorites', {} as Record<string, Object>);
   }
 
   private onStudyRecord(): void {
-    router.pushUrl({ url: 'pages/StudyRecord' });
+    this.pageStack.pushPathByName('StudyRecord', {} as Record<string, Object>);
   }
 
   private onExamRecord(): void {
-    router.pushUrl({ url: 'pages/ExamRecord' });
+    this.pageStack.pushPathByName('ExamRecord', {} as Record<string, Object>);
   }
 
   private onStudyPlan(): void {
-    router.pushUrl({ url: 'pages/StudyPlan' });
+    this.pageStack.pushPathByName('StudyPlan', {} as Record<string, Object>);
   }
 
   // 通用入口行：图标块 + 标题 + 副标题 + 箭头

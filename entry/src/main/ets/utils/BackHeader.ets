@@ -1,12 +1,12 @@
 // 通用子页头部：左侧返回按钮 + 标题 + 右侧可放操作（@BuilderParam action）
 // 用法：<BackHeader title={'备考计划'} action: () => { ... } />
-import { router } from '@kit.ArkUI';
 import { FONT, SPACE } from './Theme';
 
 @Component
 export struct BackHeader {
   @Prop title: string = '';
   @BuilderParam action: () => void = this.emptyAction;
+  @Consume pageStack: NavPathStack;
 
   @Builder
   emptyAction() {
@@ -14,7 +14,7 @@ export struct BackHeader {
 
   build() {
     Row() {
-      // 返回按钮：点击调用 router.back() 回到上一页（个人中心 Tab）
+      // 返回按钮：点击调用 pageStack.pop() 回到上一页（个人中心 Tab）
       Row() {
         Text('‹')
           .fontSize(FONT.title)
@@ -27,7 +27,7 @@ export struct BackHeader {
       .align(Alignment.Center)
       .padding({ right: SPACE.md })
       .onClick(() => {
-        router.back();
+        this.pageStack.pop();
       })
 
       // 标题：左对齐、占据剩余宽度

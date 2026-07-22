@@ -1,20 +1,25 @@
 // 我的学习记录：从本地 prefs 读取逐题自评结果，支持搜索
-import { router } from '@kit.ArkUI';
 import { common } from '@kit.AbilityKit';
 import { preferences } from '@kit.ArkData';
 import { DataStore } from '../model/DataStore';
 import { AppData, Question, RatedItem } from '../model/Types';
 import { BackHeader } from '../utils/BackHeader';
+import { LazyDataSource } from '../utils/LazySource';
 import { RADIUS, SPACE, SAFE_AREA_TYPES, SAFE_AREA_EDGES } from '../utils/Theme';
 import { IconTile, EmptyState } from '../utils/Ui';
 
+// 导航参数透传对象（规避 arkts-no-untyped-obj-literals）
+interface DetailParam { id: string; kind: string }
+
 const PREF_NAME: string = 'practice';
 
-@Entry
 @Component
-struct StudyRecord {
+export struct StudyRecord {
   @State rated: RatedItem[] = [];
   @State kw: string = '';
+  // 数据源刷新靠 IDataSource 的 onDataReloaded 通知，无需 @State（@State 代理会破坏私有字段）
+  ds: LazyDataSource<RatedItem> = new LazyDataSource<RatedItem>([]);
+  @Consume pageStack: NavPathStack;
 
   aboutToAppear(): void {
     const ctx = getContext(this) as common.UIAbilityContext;
@@ -32,8 +37,14 @@ struct StudyRecord {
           }
         }
         this.rated = list;
+        this.refresh();
       });
     });
+  }
+
+  // 同步过滤结果到 LazyForEach 数据源
+  private refresh(): void {
+    this.ds.setData(this.filterRated());
   }
 
   // 按题目标题过滤
@@ -71,6 +82,7 @@ struct StudyRecord {
         TextInput({ placeholder: '搜索自评过的题目', text: this.kw })
           .onChange((v: string) => {
             this.kw = v;
+            this.refresh();
           })
           .layoutWeight(1)
           .height(40)
@@ -87,7 +99,7 @@ struct StudyRecord {
         EmptyState({ emoji: '🔍', text: `没有匹配「${this.kw}」的记录` })
       } else {
         List() {
-          ForEach(this.filterRated(), (r: RatedItem) => {
+          LazyForEach(this.ds, (r: RatedItem) => {
             ListItem() {
               Row() {
                 IconTile({ emoji: '📝', bg: $r('app.color.brand_light'), fg: $r('app.color.brand'), dim: 40 })
@@ -109,7 +121,10 @@ struct StudyRecord {
               .borderRadius(RADIUS.sm)
               .margin({ bottom: 6 })
               .shadow({ radius: 8, color: $r('app.color.card_stroke'), offsetY: 2 })
-              .onClick(() => router.pushUrl({ url: 'pages/Detail', params: { id: r.id, kind: 'question' } }))
+              .onClick(() => {
+                const params: DetailParam = { id: r.id, kind: 'question' };
+                this.pageStack.pushPathByName('Detail', params);
+              })
             }
           }, (r: RatedItem) => r.id)
         }

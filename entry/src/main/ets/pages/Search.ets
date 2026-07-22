@@ -1,23 +1,29 @@
-import { router } from '@kit.ArkUI';
 import { common } from '@kit.AbilityKit';
 import { DataStore } from '../model/DataStore';
 import { AppData, SearchHit } from '../model/Types';
 import { searchAll } from '../model/SearchEngine';
+import { LazyDataSource } from '../utils/LazySource';
 import { RADIUS, SPACE, SAFE_AREA_TYPES, SAFE_AREA_EDGES } from '../utils/Theme';
 import { BackHeader } from '../utils/BackHeader';
 import { IconTile, EmptyState, TagChip } from '../utils/Ui';
 
-@Entry
+// 导航参数透传对象（规避 arkts-no-untyped-obj-literals）
+interface DetailParam { id: string; kind: string }
+
 @Component
-struct SearchPage {
+export struct SearchPage {
   @State data: AppData | null = null;
   @State kw: string = '';
   @State hits: SearchHit[] = [];
+  // 数据源刷新靠 IDataSource 的 onDataReloaded 通知，无需 @State（@State 代理会破坏私有字段）
+  ds: LazyDataSource<SearchHit> = new LazyDataSource<SearchHit>([]);
+  @Prop params: Object;                    // 路由参数：{ q }（Navigation 经 routeMap 透传）
+  @Consume pageStack: NavPathStack;
 
   aboutToAppear(): void {
     // 支持从顶部搜索框带 q 参数进入，自动检索
-    const p = router.getParams() as Record<string, Object> | undefined;
-    const q: string = (p && p['q']) ? (p['q'] as string) : '';
+    const p = (this.params ?? {}) as Record<string, Object>;
+    const q: string = (p['q'] ? (p['q'] as string) : '');
     DataStore.load(getContext(this) as common.UIAbilityContext).then((d) => {
       this.data = d;
       if (q) {
@@ -33,6 +39,7 @@ struct SearchPage {
     } else {
       this.hits = [];
     }
+    this.ds.setData(this.hits);
   }
 
   @StorageProp('safeTop') safeTop: number = 0;
@@ -77,7 +84,7 @@ struct SearchPage {
         EmptyState({ emoji: '🔍', text: this.kw ? `没有匹配「${this.kw}」的结果` : '输入关键词开始搜索' })
       } else {
         List() {
-          ForEach(this.hits, (h: SearchHit) => {
+          LazyForEach(this.ds, (h: SearchHit) => {
             ListItem() {
               Row() {
                 IconTile({
@@ -110,7 +117,8 @@ struct SearchPage {
               .margin({ bottom: 8 })
               .shadow({ radius: 10, color: $r('app.color.card_stroke'), offsetY: 2 })
               .onClick(() => {
-                router.pushUrl({ url: 'pages/Detail', params: { id: h.id, kind: h.kind } });
+                const params: DetailParam = { id: h.id, kind: h.kind };
+                this.pageStack.pushPathByName('Detail', params);
               })
             }
           }, (h: SearchHit) => h.id)

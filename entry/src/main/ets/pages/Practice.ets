@@ -1,12 +1,12 @@
 // 真题模考 Tab（档位 B）：选套 → 限时连做 → 交卷复盘 → 练习报告
 // 对齐华图/粉笔逻辑：模考阶段锁答案，复盘才出【参考答案 · 逐字稿】，逐题自评（本地持久化）
 // 顶部加搜索框搜真题；每完成一套写一条演练记录供「个人中心」读取
-import { router } from '@kit.ArkUI';
 import { common } from '@kit.AbilityKit';
 import { DataStore } from '../model/DataStore';
 import { AppData, Question, MockSet, PracticeSession } from '../model/Types';
 import { preferences } from '@kit.ArkData';
 import { RADIUS, SPACE, SAFE_AREA_TYPES, SAFE_AREA_EDGES } from '../utils/Theme';
+import { LazyDataSource } from '../utils/LazySource';
 import { RecorderBar } from '../utils/RecorderBar';
 import { PageHero, IconTile, SectionTitle } from '../utils/Ui';
 import { fileIo } from '@kit.CoreFileKit';
@@ -16,7 +16,6 @@ import { BusinessError } from '@kit.BasicServicesKit';
 
 const PREF_NAME: string = 'practice';
 
-@Entry
 @Component
 export struct PracticeView {
   @State data: AppData | null = null;
@@ -33,6 +32,9 @@ export struct PracticeView {
   @State notes: Record<string, string> = {};   // 用户作答要点（按题目 id）
   @State ratings: Record<string, string> = {}; // 自评：掌握/模糊/不会（按题目 id）
   @State kw: string = '';                      // 顶部搜索框
+  @Prop params: Object;                           // 路由参数：{ setId }（Navigation 经 routeMap 透传）
+  // 数据源刷新靠 IDataSource 的 onDataReloaded 通知，无需 @State（@State 代理会破坏私有字段）
+  setDs: LazyDataSource<MockSet> = new LazyDataSource<MockSet>([]);
   private pref: preferences.Preferences | null = null;
   private timer: number = 0;
   private tStartMs: number = 0;      // 计时起点（墙钟毫秒）：总用时按真实时间算，规避 setTimeout 累积漂移
@@ -81,11 +83,17 @@ export struct PracticeView {
     });
   }
 
+  // 同步过滤后的套题列表到 LazyForEach 数据源
+  private refreshSets(): void {
+    this.setDs.setData(this.filteredSets);
+  }
+
   aboutToAppear(): void {
     const ctx: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
     DataStore.load(ctx).then((d: AppData) => {
       this.data = d;
       this.sets = DataStore.sets();
+      this.refreshSets();
       preferences.getPreferences(ctx, PREF_NAME).then((p: preferences.Preferences) => {
         this.pref = p;
         // 读回历史自评，复用 Tier A 的 r_ 键
@@ -99,9 +107,9 @@ export struct PracticeView {
           });
         });
         this.ratings = r;
-        // 支持从首页/分类深链直接进入某套
-        const params: Record<string, Object> | undefined = router.getParams() as Record<string, Object> | undefined;
-        if (params && params['setId']) {
+        // 支持从首页/分类深链直接进入某套（参数经 Navigation routeMap 透传）
+        const params: Record<string, Object> = (this.params ?? {}) as Record<string, Object>;
+        if (params['setId']) {
           const sid: string = params['setId'] as string;
           const target: MockSet | undefined = this.sets.find((x: MockSet): boolean => x.id === sid);
           if (target) this.startSet(target);
@@ -500,6 +508,7 @@ export struct PracticeView {
           .margin({ top: SPACE.sm, bottom: SPACE.sm })
           .onChange((v: string) => {
             this.kw = v;
+            this.refreshSets();
           })
         // 随机单题入口
         Button('随机单题自测（快速热身）')
@@ -513,7 +522,7 @@ export struct PracticeView {
           .onClick(() => this.onStartSingle())
         // 套题列表（受搜索过滤）
         List() {
-          ForEach(this.filteredSets, (s: MockSet) => {
+          LazyForEach(this.setDs, (s: MockSet) => {
             ListItem() { this.setItem(s); }
           }, (s: MockSet): string => s.id)
         }

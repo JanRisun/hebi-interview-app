@@ -1,4 +1,3 @@
-import { router } from '@kit.ArkUI';
 import { common } from '@kit.AbilityKit';
 import { DataStore } from '../model/DataStore';
 import { Article, Question, Section } from '../model/Types';
@@ -14,9 +13,8 @@ import { FONT, RADIUS, SPACE, SAFE_AREA_TYPES, SAFE_AREA_EDGES } from '../utils/
 // 预设快捷标记（点击切换：未加→添加，已加→移除）
 const PRESET_TAGS: string[] = ['已背', '易错', '重点', '常考', '待复习', '难点'];
 
-@Entry
 @Component
-struct Detail {
+export struct Detail {
   @State itemId: string = '';
   @State kind: string = 'article';
   @State article: Article | null = null;
@@ -25,9 +23,10 @@ struct Detail {
   @State fav: boolean = false;
   @State userTags: string[] = [];       // 当前内容的用户自定义标签
   @State customInput: string = '';       // 自定义标签输入框
+  @Prop params: Object;                    // 路由参数：{ id, kind }（Navigation 经 routeMap 透传）
 
   aboutToAppear(): void {
-    const p = (router.getParams() ?? {}) as Record<string, Object>;
+    const p = (this.params ?? {}) as Record<string, Object>;
     this.itemId = (p['id'] as string) ?? '';
     this.kind = (p['kind'] as string) ?? 'article';
     const ctx = getContext(this) as common.UIAbilityContext;

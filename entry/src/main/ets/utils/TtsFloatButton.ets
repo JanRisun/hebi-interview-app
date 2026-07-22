@@ -98,6 +98,16 @@ export struct TtsFloatButton {
     return this.activeText.length > 30 ? this.activeText.slice(0, 30) + '…' : this.activeText;
   }
 
+  // 进度百分比（0-1）：供底部 Progress 组件使用
+  // 用当前句下标 / 总句数估算（CoreSpeechKit TTS 无原生按字/按时间进度回调）
+  private get progressPercent(): number {
+    if (!this.playing) return 0;
+    const total: number = TtsManager.totalSegments;
+    if (total <= 0) return 0;
+    const current: number = TtsManager.currentSegment;
+    return Math.max(0, Math.min(1, current / total));
+  }
+
   // 获取倍速标签文本
   private get speedLabel(): string {
     const speeds: number[] = [0.5, 0.75, 1.0, 1.25, 1.5];
@@ -161,6 +171,11 @@ export struct TtsFloatButton {
     } else {
       TtsManager.pause();
     }
+  }
+
+  // 「下一个」按钮：跳过当前句，朗读下一句（学习强国 skip forward 行为）
+  private onNext(): void {
+    TtsManager.next();
   }
 
   private onClose(): void {
@@ -320,70 +335,85 @@ export struct TtsFloatButton {
     return { radius: 12, color: '#25000000', offsetX: 0, offsetY: 4 };
   }
 
-  // ====== 展开完整控制栏（参考学习强国：单行横条） ======
-  // 布局：[标题(截断)...] [进度] [暂停] [播放] [关闭]
-  // 全部挤在一行，紧凑不遮挡内容
+  // ====== 展开完整控制栏（参考学习强国：单行横条 + 底部红色进度） ======
+  // 布局：主行 [标题(截断)...] [进度] [⏯toggle] [⏭next] [×]
+  //       底部 [─────────Progress 红色填充────────]
+  // 按钮用纯文本而非 SymbolGlyph：部分 sys.symbol（如 forward）在 API 20 的符号表里不存在，
+  // 会导致编译期 Unknown resource name 错误，纯文本无此风险且更可控。
   @Builder
   buildExpandedPanel() {
-    Row() {
-      // 左侧：标题（可截断）
-      Text(this.displayTitle)
-        .fontSize(FONT.bodySm)
-        .fontColor($r('app.color.text_title'))
-        .maxLines(1)
-        .textOverflow({ overflow: TextOverflow.Ellipsis })
-        .layoutWeight(1)
-
-      // 中间：进度时间（格式 00:08/03:34）
-      Text(this.progressText)
-        .fontSize(FONT.mini)
-        .fontColor($r('app.color.text_secondary'))
-        .margin({ left: SPACE.sm, right: SPACE.sm })
-
-      // 暂停按钮
-      Button() {
-        Text(this.paused ? '播' : '停')
-          .fontSize(16)
-          .fontColor(Color.White)
-      }
-      .width(36)
-      .height(36)
-      .backgroundColor($r('app.color.brand'))
-      .borderRadius(18)
-      .onClick(() => this.onPauseToggle())
-
-      // 继续播放按钮
-      Button() {
-        Text('播')
-          .fontSize(16)
+    Stack({ alignContent: Alignment.Bottom }) {
+      // 主行：标题 + 进度 + 三个按钮
+      Row() {
+        // 左侧：标题（可截断）
+        Text(this.displayTitle)
+          .fontSize(FONT.bodySm)
           .fontColor($r('app.color.text_title'))
-      }
-      .width(36)
-      .height(36)
-      .backgroundColor($r('app.color.transparent'))
-      .borderRadius(18)
-      .margin({ left: SPACE.xs })
-      .onClick(() => { if (this.paused) TtsManager.resume(); })
+          .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+          .layoutWeight(1)
 
-      // 关闭按钮
-      Button() {
-        Text('\u00D7')  // Unicode 乘号（×），不用 emoji
-          .fontSize(18)
-          .fontColor($r('app.color.text_tertiary'))
+        // 中间：进度时间（格式 00:08/03:34）
+        Text(this.progressText)
+          .fontSize(FONT.mini)
+          .fontColor($r('app.color.text_secondary'))
+          .margin({ left: SPACE.sm, right: SPACE.sm })
+
+        // 播放/暂停 toggle（纯文字：播↔停）
+        Button() {
+          Text(this.paused ? '播' : '停')
+            .fontSize(16)
+            .fontColor(Color.White)
+        }
+        .width(36)
+        .height(36)
+        .backgroundColor($r('app.color.brand'))
+        .borderRadius(18)
+        .onClick(() => this.onPauseToggle())
+
+        // 下一个：跳过当前句，朗读下一句（学习强国 skip forward）
+        Button() {
+          Text('下')
+            .fontSize(16)
+            .fontColor($r('app.color.text_title'))
+        }
+        .width(36)
+        .height(36)
+        .backgroundColor($r('app.color.transparent'))
+        .borderRadius(18)
+        .margin({ left: SPACE.xs })
+        .onClick(() => this.onNext())
+
+        // 关闭按钮
+        Button() {
+          Text('\u00D7')  // Unicode 乘号（×），不用 emoji
+            .fontSize(18)
+            .fontColor($r('app.color.text_tertiary'))
+        }
+        .width(32)
+        .height(32)
+        .backgroundColor($r('app.color.transparent'))
+        .borderRadius(16)
+        .margin({ left: SPACE.xs })
+        .onClick(() => this.onClose())
       }
-      .width(32)
-      .height(32)
-      .backgroundColor($r('app.color.transparent'))
-      .borderRadius(16)
-      .onClick(() => this.onClose())
+      .width('100%')
+      .height(this.PANEL_HEIGHT)
+      .padding({ left: SPACE.md, right: SPACE.sm, bottom: 6 })  // 底部预留 6vp 给进度条
+      .alignItems(VerticalAlign.Center)
+
+      // 底部进度条（学习强国样式：红色填充 + 半透明灰底）
+      Progress({ value: this.progressPercent * 100, total: 100, type: ProgressType.Linear })
+        .width('100%')
+        .height(2)
+        .color($r('app.color.danger'))
+        .backgroundColor('#22000000')
     }
     .width(this.EXPANDED_WIDTH)
-    .height(this.PANEL_HEIGHT)   // 与迷你条同高（52vp），保持紧凑
-    .padding({ left: SPACE.md, right: SPACE.sm })
+    .height(this.PANEL_HEIGHT)
     .backgroundColor($r('app.color.surface'))
     .borderRadius(RADIUS.lg)
     .shadow(this.expandedShadow)
-    .alignItems(VerticalAlign.Center)
   }
 
   // 展开面板阴影样式

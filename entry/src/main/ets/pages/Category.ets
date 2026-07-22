@@ -1,11 +1,15 @@
 // 素材 Tab：对应原「分类浏览」内容（知识点 / 真题库），顶部搜索框 → 全文检索
-import { router } from '@kit.ArkUI';
 import { common } from '@kit.AbilityKit';
 import { DataStore } from '../model/DataStore';
 import { AppData, Article, Question } from '../model/Types';
 import { UserTagStore } from '../utils/UserTagStore';
+import { LazyDataSource } from '../utils/LazySource';
 import { FONT, RADIUS, SPACE, SAFE_AREA_TYPES, SAFE_AREA_EDGES } from '../utils/Theme';
 import { IconTile, TagChip, SectionTitle, PageHero, EmptyState } from '../utils/Ui';
+
+// 导航参数透传对象（规避 arkts-no-untyped-obj-literals：字面量必须对应显式声明的接口）
+interface SearchParam { q: string }
+interface DetailParam { id: string; kind: string }
 
 // 预缓存分组项接口（ArkTS strict 禁止对象字面量作类型声明，必须用 interface）
 interface ArticleGroup {
@@ -25,6 +29,11 @@ export struct CategoryView {
   @State grouped: ArticleGroup[] = [];                        // 按分类分组（未筛选态用）
   @State filteredArticles: Article[] = [];                       // 当前标签命中的文章（筛选态用）
   @State filteredQuestions: Question[] = [];                     // 当前标签命中的题目
+  @Consume pageStack: NavPathStack;
+  // 数据源刷新靠 IDataSource 的 onDataReloaded 通知，无需 @State（@State 代理会破坏私有字段）
+  groupDs: LazyDataSource<ArticleGroup> = new LazyDataSource<ArticleGroup>([]);
+  articleDs: LazyDataSource<Article> = new LazyDataSource<Article>([]);
+  questionDs: LazyDataSource<Question> = new LazyDataSource<Question>([]);
 
   aboutToAppear(): void {
     const ctx = getContext(this) as common.UIAbilityContext;
@@ -53,6 +62,14 @@ export struct CategoryView {
       this.filteredArticles = d.articles.filter((a: Article): boolean => this.matchesFilter(a.id, a.tags));
       this.filteredQuestions = d.questions.filter((q: Question): boolean => this.matchesFilter(q.id, q.tags));
     }
+    this.refreshLists();
+  }
+
+  // 同步分组/筛选结果到 LazyForEach 数据源
+  private refreshLists(): void {
+    this.groupDs.setData(this.grouped);
+    this.articleDs.setData(this.filteredArticles);
+    this.questionDs.setData(this.filteredQuestions);
   }
 
   // 判断是否命中当前标签筛选（自动标签或用户标签任一命中即可）
@@ -65,7 +82,8 @@ export struct CategoryView {
   // 顶部搜索 → 全文检索页
   private onSearch(): void {
     if (this.kw.trim()) {
-      router.pushUrl({ url: 'pages/Search', params: { 'q': this.kw } });
+      const params: SearchParam = { q: this.kw };
+      this.pageStack.pushPathByName('Search', params);
     }
   }
 
@@ -159,23 +177,29 @@ export struct CategoryView {
       List() {
         if (this.filterTag === '') {
           // 未筛选：按分类分组（读预缓存 grouped）
-          ForEach(this.grouped, (g: ArticleGroup) => {
+          LazyForEach(this.groupDs, (g: ArticleGroup) => {
             ListItemGroup({ header: this.groupHeader(g.cat) }) {
               ForEach(g.items, (a: Article) => {
                 ListItem() {
                   this.rowItem(a.title, '知识点', a.tags, false)
                 }
-                .onClick(() => router.pushUrl({ url: 'pages/Detail', params: { id: a.id, kind: 'article' } }))
+                .onClick(() => {
+                  const params: DetailParam = { id: a.id, kind: 'article' };
+                  this.pageStack.pushPathByName('Detail', params);
+                })
               }, (a: Article) => a.id)
             }
           }, (g: ArticleGroup) => g.cat)
         } else {
           // 筛选态：平铺命中项（读预缓存 filteredArticles）
-          ForEach(this.filteredArticles, (a: Article) => {
+          LazyForEach(this.articleDs, (a: Article) => {
             ListItem() {
               this.rowItem(a.title, a.category, a.tags, false)
             }
-            .onClick(() => router.pushUrl({ url: 'pages/Detail', params: { id: a.id, kind: 'article' } }))
+            .onClick(() => {
+              const params: DetailParam = { id: a.id, kind: 'article' };
+              this.pageStack.pushPathByName('Detail', params);
+            })
           }, (a: Article) => a.id)
         }
       }
@@ -189,11 +213,14 @@ export struct CategoryView {
       EmptyState({ emoji: '🔍', text: `没有命中「${this.filterTag}」的真题` })
     } else {
       List() {
-        ForEach(this.filteredQuestions, (q: Question) => {
+        LazyForEach(this.questionDs, (q: Question) => {
           ListItem() {
             this.rowItem(q.title, q.source, q.tags, true)
           }
-          .onClick(() => router.pushUrl({ url: 'pages/Detail', params: { id: q.id, kind: 'question' } }))
+          .onClick(() => {
+            const params: DetailParam = { id: q.id, kind: 'question' };
+            this.pageStack.pushPathByName('Detail', params);
+          })
         }, (q: Question) => q.id)
       }
       .width('92%')

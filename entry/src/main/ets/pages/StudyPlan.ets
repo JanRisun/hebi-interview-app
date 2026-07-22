@@ -3,7 +3,6 @@
 // 每日提醒用系统代理提醒（reminderAgentManager），App 关了也照常弹通知
 import { common } from '@kit.AbilityKit';
 import { preferences } from '@kit.ArkData';
-import { router } from '@kit.ArkUI';
 import { reminderAgentManager } from '@kit.BackgroundTasksKit';
 import { notificationManager } from '@kit.NotificationKit';
 import { BusinessError } from '@kit.BasicServicesKit';
@@ -14,6 +13,10 @@ import { DataStore } from '../model/DataStore';
 import { publishDailyReminder } from '../utils/ReminderHelper';
 import { Article, MockSet, AppData } from '../model/Types';
 import { IconTile, SectionTitle } from '../utils/Ui';
+
+// 导航参数透传对象（规避 arkts-no-untyped-obj-literals：字面量必须对应显式声明的接口）
+interface DetailParam { id: string; kind: string }
+interface PracticeParam { setId: string }
 
 const PREF_NAME: string = 'practice';
 const KEY_EXAM_DATE: string = 'plan_exam_date';
@@ -63,10 +66,10 @@ interface StudyTask {
   done: boolean;
 }
 
-@Entry
 @Component
-struct StudyPlan {
+export struct StudyPlan {
   @State examDateStr: string = '';     // 'YYYY-MM-DD'，空=未设置
+  @Consume pageStack: NavPathStack;
   @State daysLeft: number = -1;        // 距今天数；-1 表示未设置
   @State tasks: StudyTask[] = [];
   @State newTask: string = '';          // 输入框临时值
@@ -586,7 +589,8 @@ struct StudyPlan {
             .fontColor($r('app.color.on_primary'))
             .borderRadius(RADIUS.pill)
             .onClick(() => {
-              router.pushUrl({ url: 'pages/Practice', params: { setId: this.today?.set?.id ?? '' } });
+              const params: PracticeParam = { setId: this.today?.set?.id ?? '' };
+              this.pageStack.pushPathByName('Practice', params);
             })
         }
         .width('100%')
@@ -641,7 +645,8 @@ struct StudyPlan {
     .margin({ bottom: SPACE.sm })
     .shadow({ radius: 10, color: $r('app.color.card_stroke'), offsetY: 2 })
     .onClick(() => {
-      router.pushUrl({ url: 'pages/Detail', params: { id: id, kind: 'article' } });
+      const params: DetailParam = { id: id, kind: 'article' };
+      this.pageStack.pushPathByName('Detail', params);
     })
     .stateStyles({
       pressed: {
