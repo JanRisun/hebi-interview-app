@@ -1,4 +1,4 @@
-// 底部 4 Tab 主框架：素材 / 速记卡 / 真题模考 / 个人中心
+// 底部 4 Tab 主框架：知识库 / 速记卡 / 题库 / 个人中心
 // 根容器用 Stack 包裹 4 Tab 内容 + 悬浮自定义底部导航栏；
 // 自定义导航栏采用「白底胶囊 + 阴影 + 圆角」HMOS 代码工坊风格，左右各留 4% 外边距。
 // Tab 栏悬浮在 Tabs 内容之上，4 个内容页 Scroll 底部应预留约 88vp 空间，
@@ -10,6 +10,7 @@ import { CategoryView } from './Category';
 import { FlashcardView } from './Flashcard';
 import { PracticeView } from './Practice';
 import { ProfileView } from './Profile';
+import { TabBarEditor } from './TabBarEditor';
 import { Detail } from './Detail';
 import { SearchPage } from './Search';
 import { Favorites } from './Favorites';
@@ -20,6 +21,8 @@ import { StudyRecord } from './StudyRecord';
 import { ExamRecord } from './ExamRecord';
 import { StudyPlan } from './StudyPlan';
 import { FONT, SPACE, SAFE_AREA_TYPES, SAFE_AREA_EDGES } from '../utils/Theme';
+import { common } from '@kit.AbilityKit';
+import { TabBarStore, TabItem } from '../utils/TabBarStore';
 import { applyStatusBar } from '../utils/StatusBar';
 
 // 自定义悬浮底部 Tab 栏固定高度 + 上下间距
@@ -36,14 +39,18 @@ struct Index {
   // Tabs 控制器：自定义 Tab 栏点击时主动驱动 Tabs 切换
   private tabsController: TabsController = new TabsController();
 
-  // 监听个人中心的跳转意图（AppStorage 透传）：materialNonce 自增即由个人中心发起跳转，
-  // 此处仅负责切到「素材」Tab；素材页自身也 @Watch 该值，负责内部子标签 / 标记筛选。
-  @StorageLink('materialNonce') @Watch('onMaterialJump') navNonce: number = 0;
+  // 底部 Tab 栏配置：顺序 + 显隐 + 名称（来自 AppStorage，默认四项）
+  @StorageLink('tabBarConfig') @Watch('onTabsChange') tabs: TabItem[] = TabBarStore.defaultTabs();
 
   // 通知/深链启动：若来自今日提醒(target=today)，自动直达备考计划页
   aboutToAppear(): void {
     // 主页 4 个 Tab 均为品牌渐变头部覆盖状态栏，状态栏图标统一用浅色（白）
     applyStatusBar('brand');
+    // 从持久化读取 Tab 配置（异步），读取到后回写 AppStorage 触发 Tab 栏刷新
+    const ctx = getContext(this) as common.UIAbilityContext;
+    TabBarStore.load(ctx).then((t: TabItem[]) => {
+      this.tabs = t;
+    });
     const target: string = AppStorage.get<string>('launchTarget') ?? '';
     if (target === 'today') {
       AppStorage.set('launchTarget', '');
@@ -53,6 +60,16 @@ struct Index {
         this.pageStack.pushPathByName('StudyPlan', {} as Record<string, Object>);
       }, 0);
     }
+  }
+
+  // Tab 配置变化（顺序 / 显隐 / 名称）：clamp 当前选中项并同步 Tabs 控制器
+  private onTabsChange(): void {
+    const vis: TabItem[] = this.tabs.filter((t: TabItem) => t.visible);
+    if (vis.length === 0) return;
+    if (this.current >= vis.length) {
+      this.current = 0;
+    }
+    this.tabsController.changeIndex(this.current);
   }
 
   // 自定义底部 Tab 按钮（HMOS 代码工坊风格：白底胶囊悬浮、图标+文字上下、
@@ -79,21 +96,28 @@ struct Index {
     })
   }
 
+  // 按 key 渲染对应主 Tab 内容
+  @Builder
+  private tabContent(key: string) {
+    if (key === 'material') {
+      CategoryView()
+    } else if (key === 'flashcard') {
+      FlashcardView()
+    } else if (key === 'practice') {
+      QuestionBankView({ root: true })
+    } else if (key === 'profile') {
+      ProfileView()
+    } else {
+      CategoryView()
+    }
+  }
+
   @StorageProp('safeTop') safeTop: number = 0;
   @StorageProp('safeBottom') safeBottom: number = 0;
 
-  // 个人中心跳转意图：切到「素材」Tab（子标签 / 标记筛选由素材页自行处理）
-  private onMaterialJump(): void {
-    if ((this.navNonce ?? 0) <= 0) return;
-    if (this.current !== 0) {
-      this.current = 0;
-    }
-    this.tabsController.changeIndex(0);
-  }
-
   // 路由表：routeName -> NavDestination 组件（参数经 routeMap 的 param 透传）
   // 子页多为浅色背景（BackHeader），进入时状态栏跟随主题；退出回到品牌主页恢复白字。
-  // Practice 路由承载的 PracticeView 自身为品牌渐变头部，仍用白字。
+  // Practice 路由（开始模考）承载的 PracticeView 自身为品牌渐变头部，仍用白字；题库主 Tab 复用真题库列表页。
   @Builder
   private routeMap(name: string, param: Object) {
     if (name === 'Detail') {
@@ -196,6 +220,16 @@ struct Index {
       .onDisAppear(() => {
         applyStatusBar('brand');
       })
+    } else if (name === 'TabBarEditor') {
+      NavDestination() {
+        TabBarEditor()
+      }.hideTitleBar(true)
+      .onAppear(() => {
+        applyStatusBar('theme');
+      })
+      .onDisAppear(() => {
+        applyStatusBar('brand');
+      })
     }
   }
 
@@ -205,21 +239,11 @@ struct Index {
       Stack({ alignContent: Alignment.Bottom }) {
         // 4 Tab 内容区（隐藏默认 tabBar，留出空间给下方悬浮 Tab 栏）
         Tabs({ barPosition: BarPosition.End, controller: this.tabsController }) {
-          TabContent() {
-            CategoryView()
-          }.tabBar(this.tabBarItem(0, $r('sys.symbol.book'), '素材'))
-
-          TabContent() {
-            FlashcardView()
-          }.tabBar(this.tabBarItem(1, $r('sys.symbol.bookmark'), '速记卡'))
-
-          TabContent() {
-            PracticeView()
-          }.tabBar(this.tabBarItem(2, $r('sys.symbol.checkmark_circle'), '真题模考'))
-
-          TabContent() {
-            ProfileView()
-          }.tabBar(this.tabBarItem(3, $r('sys.symbol.person'), '个人中心'))
+          ForEach(this.tabs.filter((t: TabItem) => t.visible), (t: TabItem, idx: number) => {
+            TabContent() {
+              this.tabContent(t.key)
+            }.tabBar(this.tabBarItem(idx, TabBarStore.icon(t.key), t.label))
+          }, (t: TabItem) => t.key)
         }
         .barPosition(BarPosition.End)
         .barHeight(0)
@@ -234,10 +258,9 @@ struct Index {
         // 悬浮自定义底部 Tab 栏：白底胶囊 + 圆角 + 阴影，左右各 4% 外边距
         Column() {
           Row() {
-            this.tabBarItem(0, $r('sys.symbol.book'), '素材')
-            this.tabBarItem(1, $r('sys.symbol.bookmark'), '速记卡')
-            this.tabBarItem(2, $r('sys.symbol.checkmark_circle'), '真题模考')
-            this.tabBarItem(3, $r('sys.symbol.person'), '个人中心')
+            ForEach(this.tabs.filter((t: TabItem) => t.visible), (t: TabItem, idx: number) => {
+              this.tabBarItem(idx, TabBarStore.icon(t.key), t.label)
+            }, (t: TabItem) => t.key)
           }
           .width('92%')
           .height(TAB_BAR_HEIGHT)
@@ -300,7 +323,7 @@ struct IndexPreview {
   build() {
     Stack({ alignContent: Alignment.Bottom }) {
       Tabs({ barPosition: BarPosition.End, controller: this.tabsController }) {
-        TabContent() { CategoryView() }.tabBar(this.tabBarItem(0, $r('sys.symbol.book'), '素材'))
+        TabContent() { CategoryView() }.tabBar(this.tabBarItem(0, $r('sys.symbol.book'), '知识库'))
         TabContent() { FlashcardView() }.tabBar(this.tabBarItem(1, $r('sys.symbol.bookmark'), '速记卡'))
         TabContent() { PracticeView() }.tabBar(this.tabBarItem(2, $r('sys.symbol.checkmark_circle'), '真题模考'))
         TabContent() { ProfileView() }.tabBar(this.tabBarItem(3, $r('sys.symbol.person'), '个人中心'))
@@ -314,7 +337,7 @@ struct IndexPreview {
 
       Column() {
         Row() {
-          this.tabBarItem(0, $r('sys.symbol.book'), '素材')
+          this.tabBarItem(0, $r('sys.symbol.book'), '知识库')
           this.tabBarItem(1, $r('sys.symbol.bookmark'), '速记卡')
           this.tabBarItem(2, $r('sys.symbol.checkmark_circle'), '真题模考')
           this.tabBarItem(3, $r('sys.symbol.person'), '个人中心')

@@ -47,6 +47,9 @@ export struct ProfileView {
   private onMyTags(): void {
     this.pageStack.pushPathByName('MyMark', {} as Record<string, Object>);
   }
+  private onTabBar(): void {
+    this.pageStack.pushPathByName('TabBarEditor', {} as Record<string, Object>);
+  }
 
   // 从本地 prefs 读取学习记录与演练记录
   private loadRecords(ctx: common.UIAbilityContext): void {
@@ -217,6 +220,9 @@ export struct ProfileView {
             .width('100%')
             .margin({ bottom: SPACE.sm })
           }
+
+          // 首页标签栏管理：编辑顺序、显隐与名称
+          this.entryRow('🧩', $r('app.color.brand_light'), $r('app.color.brand'), '首页标签栏管理', '编辑顺序、显隐与名称', () => this.onTabBar())
 
           // 入口卡片
           this.entryRow('🩷', $r('app.color.accent_soft'), $r('app.color.accent'), '我的收藏', '已收藏的题目与知识点', () => this.onFavorites())

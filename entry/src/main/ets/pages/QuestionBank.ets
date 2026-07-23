@@ -5,7 +5,7 @@ import { DataStore } from '../model/DataStore';
 import { AppData, Question } from '../model/Types';
 import { FONT, RADIUS, SPACE, SAFE_AREA_TYPES, SAFE_AREA_EDGES } from '../utils/Theme';
 import { BackHeader } from '../utils/BackHeader';
-import { IconTile, EmptyState, HighlightText } from '../utils/Ui';
+import { PageHeader, IconTile, EmptyState, HighlightText } from '../utils/Ui';
 
 // 详情路由参数（规避 arkts-no-untyped-obj-literals：字面量必须对应显式声明的接口）
 interface DetailParam { id: string; kind: string; kw?: string }
@@ -13,7 +13,10 @@ interface DetailParam { id: string; kind: string; kw?: string }
 @Component
 export struct QuestionBankView {
   @State data: AppData | null = null;
-  @State kw: string = '';          // 搜索框内容（空=显示全部真题，非空=知识点内全文检索）
+  @State kw: string = '';          // 搜索框内容（空=显示全部真题，非空=本页真题内全文检索）
+  @Prop root: boolean = false;     // true=底部主 Tab（无返回键，标题「题库」）；false=个人中心二级页
+  @State bankFilter: string = '全部'; // 真题 / 母题 筛选
+  private bankFilters: string[] = ['全部', '真题', '母题'];
   @Consume pageStack: NavPathStack;
 
   aboutToAppear(): void {
@@ -22,7 +25,7 @@ export struct QuestionBankView {
     });
   }
 
-  // 真题内全文检索：标题 / 来源 / 题型 / 标签 / 题干
+  // 真题内全文检索：标题 / 来源 / 题型 / 标签 / 题干 / 答案
   private matchQuestion(q: Question, k: string): boolean {
     const s: string = k.toLowerCase();
     if (q.title.toLowerCase().includes(s)) return true;
@@ -30,15 +33,31 @@ export struct QuestionBankView {
     if (q.type.toLowerCase().includes(s)) return true;
     if (q.tags.some((t: string): boolean => t.toLowerCase().includes(s))) return true;
     if (q.prompt.toLowerCase().includes(s)) return true;
+    if (q.answerScript.toLowerCase().includes(s)) return true;
     return false;
   }
 
-  // 当前检索命中结果（kw 为空时返回全部）
+  // 真题 / 母题 判别（依据来源字段）
+  private isReal(q: Question): boolean {
+    const s: string = (q.source ?? '').toLowerCase();
+    return s.includes('真题') || s.includes('浚县') || s.includes('事业编') || s.includes('公务员') ||
+      s.includes('省考') || s.includes('国考');
+  }
+  private isMother(q: Question): boolean {
+    const s: string = (q.source ?? '').toLowerCase();
+    return s.includes('母题') || s.includes('套题') || s.includes('模拟');
+  }
+
+  // 当前检索命中结果：先按真题/母题筛选，再按关键词全文检索（kw 为空且不过滤时返回全部）
   private searchHits(): Question[] {
     if (!this.data) return [];
-    const q: string = this.kw.trim();
-    if (!q) return this.data.questions;
-    return this.data.questions.filter((x: Question): boolean => this.matchQuestion(x, q));
+    const q: string = this.kw.trim().toLowerCase();
+    return this.data.questions.filter((x: Question): boolean => {
+      if (this.bankFilter === '真题' && !this.isReal(x)) return false;
+      if (this.bankFilter === '母题' && !this.isMother(x)) return false;
+      if (!q) return true;
+      return this.matchQuestion(x, q);
+    });
   }
 
   // 进入真题详情
@@ -94,23 +113,55 @@ export struct QuestionBankView {
     .onClick(() => this.openQuestion(q))
   }
 
-  // 真题列表（含检索态空态）
+  // 真题列表（含检索态空态；撑满剩余高度，空态居中、有数据贴顶）
   @Builder list() {
-    if (this.searchHits().length === 0) {
-      EmptyState({ emoji: '🔍', text: `没有匹配「${this.kw.trim()}」的真题` })
-    } else {
-      List() {
-        ForEach(this.searchHits(), (q: Question) => {
-          ListItem() {
-            this.questionRow(q)
-          }
-        }, (q: Question) => q.id)
+    Column() {
+      if (this.searchHits().length === 0) {
+        EmptyState({ emoji: '🔍', text: this.kw.trim() ? `没有匹配「${this.kw.trim()}」的真题` : '该分类下暂无真题' })
+      } else {
+        List() {
+          ForEach(this.searchHits(), (q: Question) => {
+            ListItem() {
+              this.questionRow(q)
+            }
+          }, (q: Question) => q.id)
+        }
+        .width('92%')
+        .layoutWeight(1)
       }
-      .width('92%')
-      .layoutWeight(1)
-      .alignSelf(ItemAlign.Center)
-      .margin({ top: SPACE.sm })
     }
+    .width('100%')
+    .layoutWeight(1)
+    .justifyContent(this.searchHits().length === 0 ? FlexAlign.Center : FlexAlign.Start)
+    .alignItems(HorizontalAlign.Center)
+  }
+
+  // 真题 / 母题 筛选条 + 结果数
+  @Builder filterBar() {
+    Column() {
+      Row({ space: SPACE.xs }) {
+        ForEach(this.bankFilters, (f: string) => {
+          Text(f)
+            .fontSize(FONT.caption)
+            .fontColor(this.bankFilter === f ? $r('app.color.brand') : $r('app.color.text_secondary'))
+            .backgroundColor(this.bankFilter === f ? $r('app.color.brand_light') : $r('app.color.surface'))
+            .borderRadius(RADIUS.pill)
+            .padding({ left: SPACE.md, right: SPACE.md, top: SPACE.xs, bottom: SPACE.xs })
+            .onClick(() => {
+              this.bankFilter = f;
+            })
+        }, (f: string) => f)
+      }
+      .width('100%')
+      Text(`${this.searchHits().length} 题`)
+        .fontSize(FONT.mini)
+        .fontColor($r('app.color.text_tertiary'))
+        .margin({ top: SPACE.xs })
+        .width('100%')
+    }
+    .width('92%')
+    .alignSelf(ItemAlign.Center)
+    .margin({ top: SPACE.sm, bottom: SPACE.xs })
   }
 
   @StorageProp('safeTop') safeTop: number = 0;
@@ -118,16 +169,20 @@ export struct QuestionBankView {
 
   build() {
     Column() {
-      // 子页头部（带返回）
-      BackHeader({ title: '真题库' })
+      // 头部：主 Tab 用 PageHeader（无返回键），二级页用 BackHeader（带返回键）
+      if (this.root) {
+        PageHeader({ title: '题库' })
+      } else {
+        BackHeader({ title: '真题库' })
+      }
 
-      // 顶部搜索框（胶囊形 + 搜索图标），输入即在本页真题内实时检索
+      // 顶部搜索框（胶囊形 + 搜索图标 + 清空），输入即在本页真题内实时检索
       Row() {
         Text('🔍')
           .fontSize(16)
           .fontColor($r('app.color.text_tertiary'))
           .margin({ left: SPACE.md, right: SPACE.sm })
-        TextInput({ placeholder: '搜索真题', text: this.kw })
+        TextInput({ placeholder: '搜索真题 / 母题', text: this.kw })
           .layoutWeight(1)
           .height(40)
           .backgroundColor($r('app.color.transparent'))
@@ -136,10 +191,10 @@ export struct QuestionBankView {
             this.kw = v;
           })
         if (this.kw) {
-            SymbolGlyph($r('sys.symbol.xmark_circle_fill'))
-              .fontSize(18)
-              .fontColor([$r('app.color.text_tertiary')])
-              .margin({ right: SPACE.md })
+          SymbolGlyph($r('sys.symbol.xmark_circle_fill'))
+            .fontSize(18)
+            .fontColor([$r('app.color.text_tertiary')])
+            .margin({ right: SPACE.md })
             .onClick(() => {
               this.kw = '';
             })
@@ -150,6 +205,9 @@ export struct QuestionBankView {
       .borderRadius(RADIUS.pill)
       .margin({ bottom: SPACE.sm })
       .shadow({ radius: 10, color: $r('app.color.card_stroke'), offsetY: 2 })
+
+      // 真题 / 母题 筛选 + 结果数
+      this.filterBar()
 
       if (this.data) {
         this.list()
