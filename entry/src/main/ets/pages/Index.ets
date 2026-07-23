@@ -13,6 +13,9 @@ import { ProfileView } from './Profile';
 import { Detail } from './Detail';
 import { SearchPage } from './Search';
 import { Favorites } from './Favorites';
+import { KnowledgeView } from './Knowledge';
+import { QuestionBankView } from './QuestionBank';
+import { MyMarkView } from './MyMark';
 import { StudyRecord } from './StudyRecord';
 import { ExamRecord } from './ExamRecord';
 import { StudyPlan } from './StudyPlan';
@@ -23,7 +26,7 @@ import { applyStatusBar } from '../utils/StatusBar';
 // 4 个内容页 Scroll 底部应预留此高度（外加自身 safeBottom）作为底部留白
 const TAB_BAR_HEIGHT: number = 56;
 const TAB_BAR_TOP_GAP: number = 8;    // Tabs 内容与 Tab 栏顶部之间的间距
-const TAB_BAR_BOTTOM_GAP: number = 12; // Tab 栏与屏幕底部的间距（不含安全区）
+const TAB_BAR_BOTTOM_GAP: number = 28; // Tab 栏与屏幕底部的间距（不含安全区，避开手势操作条）
 
 @Entry
 @Component
@@ -32,6 +35,10 @@ struct Index {
   @Provide pageStack: NavPathStack = new NavPathStack();
   // Tabs 控制器：自定义 Tab 栏点击时主动驱动 Tabs 切换
   private tabsController: TabsController = new TabsController();
+
+  // 监听个人中心的跳转意图（AppStorage 透传）：materialNonce 自增即由个人中心发起跳转，
+  // 此处仅负责切到「素材」Tab；素材页自身也 @Watch 该值，负责内部子标签 / 标记筛选。
+  @StorageLink('materialNonce') @Watch('onMaterialJump') navNonce: number = 0;
 
   // 通知/深链启动：若来自今日提醒(target=today)，自动直达备考计划页
   aboutToAppear(): void {
@@ -74,6 +81,15 @@ struct Index {
 
   @StorageProp('safeTop') safeTop: number = 0;
   @StorageProp('safeBottom') safeBottom: number = 0;
+
+  // 个人中心跳转意图：切到「素材」Tab（子标签 / 标记筛选由素材页自行处理）
+  private onMaterialJump(): void {
+    if ((this.navNonce ?? 0) <= 0) return;
+    if (this.current !== 0) {
+      this.current = 0;
+    }
+    this.tabsController.changeIndex(0);
+  }
 
   // 路由表：routeName -> NavDestination 组件（参数经 routeMap 的 param 透传）
   // 子页多为浅色背景（BackHeader），进入时状态栏跟随主题；退出回到品牌主页恢复白字。
@@ -146,6 +162,36 @@ struct Index {
       }.hideTitleBar(true)
       .onAppear(() => {
         applyStatusBar('brand');
+      })
+      .onDisAppear(() => {
+        applyStatusBar('brand');
+      })
+    } else if (name === 'Knowledge') {
+      NavDestination() {
+        KnowledgeView()
+      }.hideTitleBar(true)
+      .onAppear(() => {
+        applyStatusBar('theme');
+      })
+      .onDisAppear(() => {
+        applyStatusBar('brand');
+      })
+    } else if (name === 'QuestionBank') {
+      NavDestination() {
+        QuestionBankView()
+      }.hideTitleBar(true)
+      .onAppear(() => {
+        applyStatusBar('theme');
+      })
+      .onDisAppear(() => {
+        applyStatusBar('brand');
+      })
+    } else if (name === 'MyMark') {
+      NavDestination() {
+        MyMarkView()
+      }.hideTitleBar(true)
+      .onAppear(() => {
+        applyStatusBar('theme');
       })
       .onDisAppear(() => {
         applyStatusBar('brand');

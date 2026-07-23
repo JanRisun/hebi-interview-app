@@ -4,78 +4,80 @@ import { common } from '@kit.AbilityKit';
 const KEY: string = 'user_tags_map';
 
 // 用户自定义标签存储：基于 Preferences 持久化「内容 id → 标签数组」映射
-// 与 FavStore 共用 'interview_pref' 文件，使用独立 key
+// 与 FavStore 共用 'interview_pref' 文件，使用独立 key。
+// 采用内存缓存 cache 作为唯一数据源，所有读写都基于它，整体持久化，
+// 避免每次重新 get/parse 全量 map 在并发/复用下互相覆盖其它 id 的标签。
 export class UserTagStore {
   private static store: preferences.Preferences | null = null;
+  private static cache: Record<string, string[]> = {};
 
   static async init(context: common.UIAbilityContext): Promise<void> {
     if (!UserTagStore.store) {
       UserTagStore.store = await preferences.getPreferences(context, 'interview_pref');
     }
-  }
-
-  // 读取完整映射 { id: string[] }
-  private static async map(): Promise<Record<string, string[]>> {
-    if (!UserTagStore.store) {
-      return {};
-    }
     const v: string = (await UserTagStore.store.get(KEY, '{}')) as string;
     try {
-      return JSON.parse(v) as Record<string, string[]>;
+      UserTagStore.cache = JSON.parse(v) as Record<string, string[]>;
     } catch (e) {
-      return {};
+      UserTagStore.cache = {};
     }
   }
 
-  // 读取某内容的用户标签
+  // 读取某内容的用户标签（返回副本，防止外部持有并修改缓存数组）
   static async getUserTags(id: string): Promise<string[]> {
-    const m = await UserTagStore.map();
-    return m[id] ?? [];
+    const arr: string[] | undefined = UserTagStore.cache[id];
+    return arr ? arr.slice() : [];
   }
 
-  // 写入某内容的用户标签（空数组则删除该 id 记录）
-  static async save(id: string, tags: string[]): Promise<void> {
+  // 将内存缓存整体写入 Preferences
+  private static async persist(): Promise<void> {
     if (!UserTagStore.store) return;
-    const m = await UserTagStore.map();
-    if (tags.length === 0) {
-      m[id] = [];   // ArkTS 禁 delete 操作符，赋空数组等效（getUserTags 对缺失/空均返回 []）
-    } else {
-      m[id] = tags;
-    }
-    await UserTagStore.store.put(KEY, JSON.stringify(m));
+    await UserTagStore.store.put(KEY, JSON.stringify(UserTagStore.cache));
     await UserTagStore.store.flush();
   }
 
-  // 给某内容添加一个标签（去重），返回最新标签数组
+  // 给某内容添加一个标签（去重），返回最新标签数组副本
   static async addTag(id: string, tag: string): Promise<string[]> {
     const t: string = tag.trim();
     if (!t) return UserTagStore.getUserTags(id);
-    const cur: string[] = await UserTagStore.getUserTags(id);
-    if (!cur.includes(t)) {
-      cur.push(t);
-      await UserTagStore.save(id, cur);
+    if (!UserTagStore.cache[id]) {
+      UserTagStore.cache[id] = [];
     }
-    return cur;
+    const arr: string[] = UserTagStore.cache[id];
+    if (!arr.includes(t)) {
+      arr.push(t);
+      await UserTagStore.persist();
+      UserTagStore.notifyChange();
+    }
+    return arr.slice();
   }
 
-  // 移除某内容的某个标签，返回最新标签数组
+  // 移除某内容的某个标签，返回最新标签数组副本
   static async removeTag(id: string, tag: string): Promise<string[]> {
-    const cur: string[] = await UserTagStore.getUserTags(id);
-    const next: string[] = cur.filter((x: string) => x !== tag);
-    await UserTagStore.save(id, next);
-    return next;
+    const arr: string[] = (UserTagStore.cache[id] ?? []).filter((x: string) => x !== tag);
+    UserTagStore.cache[id] = arr;
+    await UserTagStore.persist();
+    UserTagStore.notifyChange();
+    return arr.slice();
   }
 
   // 全部用户自定义标签（去重、排序），用于筛选条
   static async allTags(): Promise<string[]> {
-    const m = await UserTagStore.map();
     const set: Set<string> = new Set<string>();
-    Object.values(m).forEach((arr: string[]) => arr.forEach((t: string) => set.add(t)));
+    Object.values(UserTagStore.cache).forEach((arr: string[]) => arr.forEach((t: string) => set.add(t)));
     return Array.from(set).sort();
   }
 
-  // 完整映射，供筛选时按内容判断
+  // 完整映射（按需返回副本），供筛选时按内容判断
   static async allMap(): Promise<Record<string, string[]>> {
-    return UserTagStore.map();
+    const m: Record<string, string[]> = {};
+    Object.keys(UserTagStore.cache).forEach((k: string) => { m[k] = UserTagStore.cache[k].slice(); });
+    return m;
+  }
+
+  // 通知全局：用户标签已变更，供展示页（我的标记/素材筛选/个人中心）自动刷新
+  static notifyChange(): void {
+    const v: number = (AppStorage.get('favTagVersion') as number) ?? 0;
+    AppStorage.set('favTagVersion', v + 1);
   }
 }

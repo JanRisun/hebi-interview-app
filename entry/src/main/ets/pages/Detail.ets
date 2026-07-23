@@ -6,7 +6,7 @@ import { UserTagStore } from '../utils/UserTagStore';
 import { RecorderBar } from '../utils/RecorderBar';
 import { ReaderIcon } from '../utils/SpeechReader';
 import { BackHeader } from '../utils/BackHeader';
-import { SectionTitle, TagChip } from '../utils/Ui';
+import { SectionTitle, TagChip, HighlightText } from '../utils/Ui';
 import { FONT, RADIUS, SPACE, SAFE_AREA_TYPES, SAFE_AREA_EDGES } from '../utils/Theme';
 
 // 预设快捷标记（点击切换：未加→添加，已加→移除）
@@ -22,23 +22,45 @@ export struct Detail {
   @State fav: boolean = false;
   @State userTags: string[] = [];       // 当前内容的用户自定义标签
   @State customInput: string = '';       // 自定义标签输入框
-  @Prop params: Object;                    // 路由参数：{ id, kind }（Navigation 经 routeMap 透传）
+  @State kw: string = '';                 // 搜索进入时透传的关键词，用于在正文/标题高亮
+  @Prop params: Object;                    // 路由参数：{ id, kind, kw? }（Navigation 经 routeMap 透传）
+
+  // 加载令牌：仅应用最新一次 load 的结果，避免复用/快速切换时旧异步覆盖新内容
+  private loadToken: number = 0;
 
   aboutToAppear(): void {
+    this.load();
+  }
+
+  // 兜底：Navigation 复用 NavDestination 实例时，onPageShow 仍会随显示触发，
+  // 保证 itemId / 内容 / 用户标签始终与当前路由参数一致
+  onPageShow(): void {
+    this.load();
+  }
+
+  // 依据路由参数加载内容与其用户标签；全程使用局部 id，避免异步期间 this.itemId 被改写导致串数据
+  private async load(): Promise<void> {
     const p = (this.params ?? {}) as Record<string, Object>;
-    this.itemId = (p['id'] as string) ?? '';
-    this.kind = (p['kind'] as string) ?? 'article';
+    const id: string = (p['id'] as string) ?? '';
+    const kind: string = (p['kind'] as string) ?? 'article';
+    const kw: string = ((p['kw'] as string) ?? '').trim();
+    this.itemId = id;
+    this.kind = kind;
+    this.kw = kw;
+    const token: number = ++this.loadToken;
     const ctx = getContext(this) as common.UIAbilityContext;
-    DataStore.load(ctx).then(async () => {
-      if (this.kind === 'article') {
-        this.article = DataStore.articleById(this.itemId) ?? null;
-      } else {
-        this.question = DataStore.questionById(this.itemId) ?? null;
-        this.showAnswer = false;
-      }
-      this.fav = await FavStore.has(this.itemId);
-      this.userTags = await UserTagStore.getUserTags(this.itemId);
-    });
+    await DataStore.load(ctx);
+    if (token !== this.loadToken) return;
+    if (kind === 'article') {
+      this.article = DataStore.articleById(id) ?? null;
+    } else {
+      this.question = DataStore.questionById(id) ?? null;
+      this.showAnswer = false;
+    }
+    if (token !== this.loadToken) return;
+    this.fav = await FavStore.has(id);
+    if (token !== this.loadToken) return;
+    this.userTags = await UserTagStore.getUserTags(id);
   }
 
   private async toggleFav(): Promise<void> {
@@ -143,14 +165,9 @@ export struct Detail {
   @Builder articleView() {
     Scroll() {
       Column() {
-        Text(this.article!.title)
-          .fontSize(FONT.display)
-          .fontWeight(FontWeight.Bold)
-          .fontColor($r('app.color.text_title'))
+        HighlightText({ text: this.article!.title, kw: this.kw, fontSize: FONT.display, baseColor: $r('app.color.text_title'), baseWeight: FontWeight.Bold })
           .margin({ bottom: SPACE.sm })
-        Text(this.article!.category)
-          .fontSize(FONT.caption)
-          .fontColor($r('app.color.text_secondary'))
+        HighlightText({ text: this.article!.category, kw: this.kw, fontSize: FONT.caption, baseColor: $r('app.color.text_secondary'), baseWeight: FontWeight.Normal })
           .margin({ bottom: SPACE.xs })
         // 标签行：全部展示，自动换行
         if (this.article!.tags !== undefined && this.article!.tags.length > 0) {
@@ -184,16 +201,10 @@ export struct Detail {
         ForEach(this.article!.sections, (s: Section) => {
           Column() {
             if (s.heading) {
-              Text(s.heading)
-                .fontSize(FONT.title)
-                .fontWeight(FontWeight.Medium)
-                .fontColor($r('app.color.brand'))
+              HighlightText({ text: s.heading, kw: this.kw, fontSize: FONT.title, baseColor: $r('app.color.brand'), baseWeight: FontWeight.Medium })
                 .margin({ top: SPACE.md, bottom: SPACE.xs })
             }
-            Text(s.body)
-              .fontSize(FONT.bodySm)
-              .fontColor($r('app.color.text_body'))
-              .lineHeight(22)
+            HighlightText({ text: s.body, kw: this.kw, fontSize: FONT.bodySm, baseColor: $r('app.color.text_body'), baseWeight: FontWeight.Normal })
           }
           .alignItems(HorizontalAlign.Start)
           .width('100%')
@@ -209,10 +220,7 @@ export struct Detail {
   @Builder questionView() {
     Scroll() {
       Column() {
-        Text(this.question!.title)
-          .fontSize(FONT.display)
-          .fontWeight(FontWeight.Bold)
-          .fontColor($r('app.color.text_title'))
+        HighlightText({ text: this.question!.title, kw: this.kw, fontSize: FONT.display, baseColor: $r('app.color.text_title'), baseWeight: FontWeight.Bold })
           .margin({ bottom: SPACE.sm })
         Row() {
           Text(this.question!.type)
@@ -221,9 +229,7 @@ export struct Detail {
             .backgroundColor($r('app.color.tag_bg'))
             .borderRadius(RADIUS.sm)
             .padding({ left: SPACE.sm, right: SPACE.sm, top: SPACE.xs, bottom: SPACE.xs })
-          Text(this.question!.source)
-            .fontSize(FONT.caption)
-            .fontColor($r('app.color.text_secondary'))
+          HighlightText({ text: this.question!.source, kw: this.kw, fontSize: FONT.caption, baseColor: $r('app.color.text_secondary'), baseWeight: FontWeight.Normal })
             .margin({ left: SPACE.sm })
         }.margin({ bottom: SPACE.xs })
         // 真题标签行：全部展示，自动换行
@@ -256,10 +262,7 @@ export struct Detail {
         this.userTagSection()
         SectionTitle({ title: '题目' })
           .margin({ top: SPACE.sm, bottom: SPACE.xs })
-        Text(this.question!.prompt)
-          .fontSize(FONT.bodySm)
-          .fontColor($r('app.color.text_body'))
-          .lineHeight(22)
+        HighlightText({ text: this.question!.prompt, kw: this.kw, fontSize: FONT.bodySm, baseColor: $r('app.color.text_body'), baseWeight: FontWeight.Normal })
           .margin({ bottom: SPACE.md })
         // 开口自测：录音 + 回放 + 计时（按当前题 id 存本机）
         RecorderBar({ qid: this.itemId })
@@ -276,10 +279,7 @@ export struct Detail {
           }
           .width('100%')
           .margin({ top: SPACE.sm, bottom: SPACE.xs })
-          Text(this.question!.answerScript)
-            .fontSize(FONT.bodySm)
-            .fontColor($r('app.color.text_body'))
-            .lineHeight(22)
+          HighlightText({ text: this.question!.answerScript, kw: this.kw, fontSize: FONT.bodySm, baseColor: $r('app.color.text_body'), baseWeight: FontWeight.Normal })
         } else {
           Button('查看参考答案（逐字稿）')
             .onClick(() => { this.showAnswer = true; })
@@ -304,14 +304,14 @@ export struct Detail {
   build() {
     // 朗读改用系统朗读控件 TextReader（自带悬浮播控面板），页面内不再自绘悬浮按钮
     Column() {
-      BackHeader({ title: this.kind === 'article' ? '知识点' : '真题详情' }) {
-        Row() {
-          Text(this.fav ? '★' : '☆')
-            .fontSize(FONT.title)
-            .fontColor(this.fav ? $r('app.color.favorite') : $r('app.color.text_tertiary'))
-        }
-        .padding({ left: SPACE.md, right: SPACE.sm })
-        .onClick(() => this.toggleFav())
+      BackHeader({
+        title: this.kind === 'article' ? '知识点' : '真题详情',
+        showAction: true
+      }) {
+        Text(this.fav ? '★' : '☆')
+          .fontSize(FONT.title)
+          .fontColor(this.fav ? $r('app.color.favorite') : $r('app.color.text_tertiary'))
+          .onClick(() => this.toggleFav())
       }
 
       if (this.article) {

@@ -197,8 +197,8 @@ export struct FlashcardView {
       .height('100%')
       .backgroundColor($r('app.color.background'))
       .expandSafeArea(SAFE_AREA_TYPES, SAFE_AREA_EDGES)
-      .padding({ top: this.safeTop, bottom: 88 + this.safeBottom })
-      // 底部预留 88vp 悬浮 Tab 栏空间（高度 56 + 顶部 8 + 底部 12 + 自身 safeBottom），
+      .padding({ top: this.safeTop, bottom: 100 + this.safeBottom })
+      // 底部预留 100vp 悬浮 Tab 栏空间（高度 56 + 顶部 8 + 底部 28 + 自身 safeBottom），
       // 避免按钮/TTS/提示被悬浮 Tab 栏遮挡
   }
 }

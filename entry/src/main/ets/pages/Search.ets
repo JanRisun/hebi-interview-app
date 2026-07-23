@@ -5,10 +5,10 @@ import { searchAll } from '../model/SearchEngine';
 import { LazyDataSource } from '../utils/LazySource';
 import { RADIUS, SPACE, SAFE_AREA_TYPES, SAFE_AREA_EDGES } from '../utils/Theme';
 import { BackHeader } from '../utils/BackHeader';
-import { IconTile, EmptyState, TagChip } from '../utils/Ui';
+import { IconTile, EmptyState, TagChip, HighlightText } from '../utils/Ui';
 
 // 导航参数透传对象（规避 arkts-no-untyped-obj-literals）
-interface DetailParam { id: string; kind: string }
+interface DetailParam { id: string; kind: string; kw?: string }
 
 @Component
 export struct SearchPage {
@@ -50,15 +50,33 @@ export struct SearchPage {
       BackHeader({ title: '搜索' })
 
       Row() {
-        TextInput({ placeholder: '输入关键词，如：调研、红旗渠、情景模拟', text: this.kw })
-          .onChange((v: string) => {
-            this.kw = v;
-          })
-          .layoutWeight(1)
-          .height(40)
-          .backgroundColor($r('app.color.surface'))
-          .borderRadius(RADIUS.pill)
-          .padding({ left: 14 })
+        Row() {
+          TextInput({ placeholder: '输入关键词，如：调研、红旗渠、情景模拟', text: this.kw })
+            .onChange((v: string) => {
+              this.kw = v;
+            })
+            .onSubmit(() => this.doSearch())
+            .layoutWeight(1)
+            .height(40)
+            .backgroundColor(Color.Transparent)
+            .borderRadius(RADIUS.pill)
+            .padding({ left: 0, right: 4 })
+          if (this.kw) {
+            SymbolGlyph($r('sys.symbol.xmark_circle_fill'))
+              .fontSize(18)
+              .fontColor([$r('app.color.text_tertiary')])
+              .margin({ right: SPACE.md })
+              .onClick(() => {
+                this.kw = '';
+                this.doSearch();
+              })
+          }
+        }
+        .layoutWeight(1)
+        .height(40)
+        .backgroundColor($r('app.color.surface'))
+        .borderRadius(RADIUS.pill)
+        .padding({ left: 14, right: 6 })
         Button('搜索')
           .onClick(() => this.doSearch())
           .height(40)
@@ -95,14 +113,21 @@ export struct SearchPage {
                 })
                   .margin({ right: 12 })
                 Column() {
-                  Text(h.title)
-                    .fontSize(15)
-                    .fontWeight(FontWeight.Medium)
-                    .fontColor($r('app.color.text_primary'))
-                  Text(`${h.kind === 'article' ? '知识点' : '真题'} · ${h.category}`)
-                    .fontSize(12)
-                    .fontColor($r('app.color.text_secondary'))
-                    .margin({ top: 4 })
+                  HighlightText({
+                    text: h.title,
+                    kw: this.kw,
+                    fontSize: 15,
+                    baseColor: $r('app.color.text_primary'),
+                    hitColor: $r('app.color.brand')
+                  })
+                    .margin({ bottom: 4 })
+                  HighlightText({
+                    text: `${h.kind === 'article' ? '知识点' : '真题'} · ${h.category}`,
+                    kw: this.kw,
+                    fontSize: 12,
+                    baseColor: $r('app.color.text_secondary'),
+                    hitColor: $r('app.color.brand')
+                  })
                 }
                 .layoutWeight(1)
                 .alignItems(HorizontalAlign.Start)
@@ -117,7 +142,7 @@ export struct SearchPage {
               .margin({ bottom: 8 })
               .shadow({ radius: 10, color: $r('app.color.card_stroke'), offsetY: 2 })
               .onClick(() => {
-                const params: DetailParam = { id: h.id, kind: h.kind };
+                const params: DetailParam = { id: h.id, kind: h.kind, kw: this.kw };
                 this.pageStack.pushPathByName('Detail', params);
               })
             }
@@ -132,7 +157,7 @@ export struct SearchPage {
     .height('100%')
     .backgroundColor($r('app.color.background'))
       .expandSafeArea(SAFE_AREA_TYPES, SAFE_AREA_EDGES)
-      .padding({ top: this.safeTop, bottom: this.safeBottom })
+      .padding({ top: this.safeTop, bottom: this.safeBottom + 12 })
   }
 }
 

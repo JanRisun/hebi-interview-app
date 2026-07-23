@@ -485,6 +485,23 @@ export struct PracticeView {
   @StorageProp('safeTop') safeTop: number = 0;
   @StorageProp('safeBottom') safeBottom: number = 0;
 
+  // 圆形浅灰底返回按钮（与 BackHeader 风格统一）：40vp 圆 + chevron_left 系统符号
+  @Builder
+  navBackBtn() {
+    Row() {
+      SymbolGlyph($r('sys.symbol.chevron_left'))
+        .fontSize(20)
+        .fontColor([$r('app.color.text_primary'), $r('app.color.text_primary'), $r('app.color.text_primary')])
+    }
+    .width(40)
+    .height(40)
+    .borderRadius(20)
+    .backgroundColor($r('app.color.surface_variant'))
+    .justifyContent(FlexAlign.Center)
+    .alignItems(VerticalAlign.Center)
+    .onClick(() => this.onBackToSelect())
+  }
+
   build() {
     Column() {
       if (this.phase === 'select') {
@@ -533,26 +550,25 @@ export struct PracticeView {
         // 模考阶段：仅题目 + 计时 + 笔记，锁答案
         Column() {
           Row() {
-            Button('‹ 返回选套')
-              .fontSize(13)
-              .fontColor($r('app.color.brand'))
-              .backgroundColor($r('app.color.transparent'))   // 全透明背景（替代 Color.Transparent）
-              .onClick(() => this.onBackToSelect())
+            // 左侧：圆形浅灰底返回按钮（与 BackHeader 风格统一）
+            this.navBackBtn()
+            // 中部：标题左对齐（套题名 /「随机单题自测」+ 题号）
             Column() {
-              Text(`第 ${this.idx + 1} / ${this.qList.length} 题`)
-                .fontSize(14)
+              Text(this.curSet ? this.curSet.title : '')
+                .fontSize(16)
+                .fontWeight(FontWeight.Bold)
                 .fontColor($r('app.color.text_title'))
-                .fontWeight(FontWeight.Medium)
-              if (this.curSet) {
-                Text(this.curSet.title)
-                  .fontSize(12)
-                  .fontColor($r('app.color.text_secondary'))
-                  .margin({ top: 2 })
-              }
+                .maxLines(1)
+                .textOverflow({ overflow: TextOverflow.Ellipsis })
+              Text(`第 ${this.idx + 1} / ${this.qList.length} 题`)
+                .fontSize(12)
+                .fontColor($r('app.color.text_secondary'))
+                .margin({ top: 2 })
             }
             .layoutWeight(1)
-            .alignItems(HorizontalAlign.Center)
-            // 分段计时：待机态→显示「开始答题」按钮；运行态→显示倒计时
+            .alignItems(HorizontalAlign.Start)
+            .margin({ left: SPACE.md })
+            // 右侧：分段计时（待机态→开始按钮；运行态→倒计时）
             if (!this.timerStarted) {
               Button('开始答题')
                 .fontSize(14)
@@ -580,14 +596,11 @@ export struct PracticeView {
                     .fontColor($r('app.color.danger'))
                 }
               }
-              .alignItems(HorizontalAlign.Center)
+              .alignItems(HorizontalAlign.End)
             }
           }
           .width('92%')
-          .padding({ left: SPACE.lg, right: SPACE.lg, top: SPACE.sm, bottom: SPACE.sm })
-          .backgroundColor($r('app.color.surface'))
-          .borderRadius(RADIUS.md)
-          .shadow({ radius: 10, color: $r('app.color.card_stroke'), offsetY: 2 })
+          .alignItems(VerticalAlign.Center)
           .margin({ top: SPACE.md, bottom: SPACE.md })
 
           // 分段计时说明：本题思考→作答节奏提示
@@ -654,6 +667,9 @@ export struct PracticeView {
           }
           .layoutWeight(1)
           .width('100%')
+          .scrollable(ScrollDirection.Vertical)
+          .scrollBar(BarState.Off)
+          .align(Alignment.Top)
 
           // 底部导航：上一题（idx>0 可用，否则置灰禁用）+ 下一题/交卷
           Row({ space: 12 }) {
@@ -681,29 +697,35 @@ export struct PracticeView {
         .width('100%')
         .height('100%')
         .backgroundColor($r('app.color.background'))
-      .expandSafeArea(SAFE_AREA_TYPES, SAFE_AREA_EDGES)
-      .padding({ top: this.safeTop, bottom: this.safeBottom })
+        .padding({ bottom: this.safeBottom })
+
       } else if (this.phase === 'review') {
         // 整卷复盘：逐题出参考答案 + 自评
         Column() {
           Row() {
-            Button('‹ 选套')
-              .fontSize(13)
-              .fontColor($r('app.color.brand'))
-              .backgroundColor($r('app.color.transparent'))
-              .onClick(() => this.onBackToSelect())
-            Text('整卷复盘')
-              .fontSize(16)
-              .fontWeight(FontWeight.Bold)
-              .fontColor($r('app.color.text_title'))
-              .layoutWeight(1)
-              .textAlign(TextAlign.Center)
+            this.navBackBtn()
+            Column() {
+              Text('整卷复盘')
+                .fontSize(16)
+                .fontWeight(FontWeight.Bold)
+                .fontColor($r('app.color.text_title'))
+              if (this.curSet) {
+                Text(this.curSet.title)
+                  .fontSize(12)
+                  .fontColor($r('app.color.text_secondary'))
+                  .margin({ top: 2 })
+              }
+            }
+            .layoutWeight(1)
+            .alignItems(HorizontalAlign.Start)
+            .margin({ left: SPACE.md })
             Text(`用时 ${this.fmt(this.elapsed)}`)
               .fontSize(13)
               .fontColor($r('app.color.text_secondary'))
           }
           .width('92%')
-          .margin({ top: 14, bottom: 8 })
+          .alignItems(VerticalAlign.Center)
+          .margin({ top: SPACE.md, bottom: SPACE.md })
 
           Scroll() {
             Column() {
@@ -768,6 +790,9 @@ export struct PracticeView {
           }
           .layoutWeight(1)
           .width('100%')
+          .scrollable(ScrollDirection.Vertical)
+          .scrollBar(BarState.Off)
+          .align(Alignment.Top)
 
           Button('查看练习报告')
             .width('92%')
@@ -782,27 +807,33 @@ export struct PracticeView {
         .width('100%')
         .height('100%')
         .backgroundColor($r('app.color.background'))
-      .expandSafeArea(SAFE_AREA_TYPES, SAFE_AREA_EDGES)
-      .padding({ top: this.safeTop, bottom: this.safeBottom })
+        .padding({ bottom: this.safeBottom })
+
       } else {
         // 练习报告
         Column() {
           Row() {
-            Button('‹ 选套')
-              .fontSize(13)
-              .fontColor($r('app.color.brand'))
-              .backgroundColor($r('app.color.transparent'))
-              .onClick(() => this.onBackToSelect())
-            Text('练习报告')
-              .fontSize(16)
-              .fontWeight(FontWeight.Bold)
-              .fontColor($r('app.color.text_title'))
-              .layoutWeight(1)
-              .textAlign(TextAlign.Center)
+            this.navBackBtn()
+            Column() {
+              Text('练习报告')
+                .fontSize(16)
+                .fontWeight(FontWeight.Bold)
+                .fontColor($r('app.color.text_title'))
+              if (this.curSet) {
+                Text(this.curSet.title)
+                  .fontSize(12)
+                  .fontColor($r('app.color.text_secondary'))
+                  .margin({ top: 2 })
+              }
+            }
+            .layoutWeight(1)
+            .alignItems(HorizontalAlign.Start)
+            .margin({ left: SPACE.md })
             Blank()
           }
           .width('92%')
-          .margin({ top: 14, bottom: 10 })
+          .alignItems(VerticalAlign.Center)
+          .margin({ top: SPACE.md, bottom: SPACE.md })
 
           // 统计卡
           Row({ space: 10 }) {
@@ -844,6 +875,9 @@ export struct PracticeView {
           }
           .layoutWeight(1)
           .width('100%')
+          .scrollable(ScrollDirection.Vertical)
+          .scrollBar(BarState.Off)
+          .align(Alignment.Top)
 
           Button('再来一套')
             .width('92%')
@@ -858,16 +892,16 @@ export struct PracticeView {
         .width('100%')
         .height('100%')
         .backgroundColor($r('app.color.background'))
-      .expandSafeArea(SAFE_AREA_TYPES, SAFE_AREA_EDGES)
-      .padding({ top: this.safeTop, bottom: this.safeBottom })
+        .padding({ bottom: this.safeBottom })
+
       }
     }
     .width('100%')
     .height('100%')
     .backgroundColor($r('app.color.background'))
       .expandSafeArea(SAFE_AREA_TYPES, SAFE_AREA_EDGES)
-      .padding({ top: this.safeTop, bottom: 88 + this.safeBottom })
-      // 底部预留 88vp 悬浮 Tab 栏空间（高度 56 + 顶部 8 + 底部 12 + 自身 safeBottom），
+      .padding({ top: this.safeTop, bottom: 100 + this.safeBottom })
+      // 底部预留 100vp 悬浮 Tab 栏空间（高度 56 + 顶部 8 + 底部 28 + 自身 safeBottom），
       // 避免 phase 内 List/Scroll 最后一行 + 底部按钮被悬浮 Tab 栏遮挡
   }
 

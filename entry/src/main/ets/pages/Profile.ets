@@ -3,6 +3,7 @@ import { common } from '@kit.AbilityKit';
 import { preferences } from '@kit.ArkData';
 import { DataStore } from '../model/DataStore';
 import { AppData, Question, RatedItem, PracticeSession } from '../model/Types';
+import { UserTagStore } from '../utils/UserTagStore';
 import { FONT, RADIUS, SPACE, SAFE_AREA_TYPES, SAFE_AREA_EDGES } from '../utils/Theme';
 import { PageHero, PageHeader, IconTile, StatCard } from '../utils/Ui';
 
@@ -13,14 +14,38 @@ export struct ProfileView {
   @State data: AppData | null = null;
   @State rated: RatedItem[] = [];        // 我的学习记录（自评索引）
   @State sessions: PracticeSession[] = []; // 我的真题演练记录
+  @State userTagPool: string[] = [];     // 我的标记（用户自定义标签）列表
   @Consume pageStack: NavPathStack;
 
+  // 订阅全局收藏/标签版本号：详情页加收藏/标签后自动重读，无需重启 app
+  @StorageLink('favTagVersion') @Watch('onDataChange') tagVersion: number = 0;
+
   aboutToAppear(): void {
+    this.refreshData();
+  }
+
+  // 收藏/标签变更时触发（@Watch）：重读最新数据（含我的标记）
+  private onDataChange(): void {
+    this.refreshData();
+  }
+
+  private refreshData(): void {
     const ctx = getContext(this) as common.UIAbilityContext;
     DataStore.load(ctx).then((d: AppData) => {
       this.data = d;
       this.loadRecords(ctx);
     });
+    UserTagStore.allTags().then((t: string[]) => { this.userTagPool = t; });
+  }
+
+  private onKnowledge(): void {
+    this.pageStack.pushPathByName('Knowledge', {} as Record<string, Object>);
+  }
+  private onQuestionBank(): void {
+    this.pageStack.pushPathByName('QuestionBank', {} as Record<string, Object>);
+  }
+  private onMyTags(): void {
+    this.pageStack.pushPathByName('MyMark', {} as Record<string, Object>);
   }
 
   // 从本地 prefs 读取学习记录与演练记录
@@ -95,10 +120,11 @@ export struct ProfileView {
       .layoutWeight(1)
     }
     .width('100%')
-    .padding({ left: SPACE.md, right: SPACE.md, top: SPACE.sm, bottom: SPACE.md })
+    .padding({ left: SPACE.md, right: SPACE.md, top: SPACE.md, bottom: SPACE.md })
     .backgroundColor($r('app.color.surface'))
     .borderRadius(RADIUS.md)
-    .margin({ bottom: SPACE.sm })
+    // 去掉与数据卡的间距，让数据卡紧贴用户卡；用户卡与标题之间保留 PageHeader 自身的底部 padding 作为间距
+    .margin({ top: 0, bottom: 0 })
     .shadow({ radius: 10, color: $r('app.color.card_stroke'), offsetY: 2 })
   }
 
@@ -133,6 +159,27 @@ export struct ProfileView {
     .onClick(cb)
   }
 
+  // 素材汇总小卡：数值 + 标签，点击跳转对应页面（知识点 / 真题库 / 我的标记）
+  @Builder statLink(value: string, label: string, cb: () => void) {
+    Column() {
+      Text(value)
+        .fontSize(FONT.title)
+        .fontWeight(FontWeight.Bold)
+        .fontColor($r('app.color.brand'))
+      Text(label)
+        .fontSize(FONT.mini)
+        .fontColor($r('app.color.text_secondary'))
+        .margin({ top: 2 })
+    }
+    .layoutWeight(1)
+    .alignItems(HorizontalAlign.Center)
+    .padding({ top: SPACE.md, bottom: SPACE.md })
+    .backgroundColor($r('app.color.surface'))
+    .borderRadius(RADIUS.md)
+    .shadow({ radius: 10, color: $r('app.color.card_stroke'), offsetY: 2 })
+    .onClick(cb)
+  }
+
   @StorageProp('safeTop') safeTop: number = 0;
   @StorageProp('safeBottom') safeBottom: number = 0;
 
@@ -160,6 +207,17 @@ export struct ProfileView {
             .margin({ top: SPACE.sm, bottom: SPACE.sm })
           }
 
+          // 素材汇总：点击跳转对应页面（知识点 / 真题库 / 我的标记）
+          if (this.data) {
+            Row({ space: SPACE.sm }) {
+              this.statLink(`${this.data.articles.length}`, '知识点', () => this.onKnowledge())
+              this.statLink(`${this.data.questions.length}`, '真题库', () => this.onQuestionBank())
+              this.statLink(`${this.userTagPool.length}`, '我的标记', () => this.onMyTags())
+            }
+            .width('100%')
+            .margin({ bottom: SPACE.sm })
+          }
+
           // 入口卡片
           this.entryRow('🩷', $r('app.color.accent_soft'), $r('app.color.accent'), '我的收藏', '已收藏的题目与知识点', () => this.onFavorites())
           this.entryRow('📝', $r('app.color.brand_light'), $r('app.color.brand'), '我的学习记录', `已自评 ${this.rated.length} 道`, () => this.onStudyRecord())
@@ -171,15 +229,16 @@ export struct ProfileView {
       }
       .layoutWeight(1)
       .width('100%')
-      // 上提覆盖 PageHeader 底部留白（仅背景，无内容），消除标题栏与内容的大间距
-      .margin({ top: -SPACE.sm })
+      .scrollable(ScrollDirection.Vertical)
+      .scrollBar(BarState.Off)
+      .align(Alignment.Top)
     }
     .width('100%')
     .height('100%')
     .backgroundColor($r('app.color.background'))
       .expandSafeArea(SAFE_AREA_TYPES, SAFE_AREA_EDGES)
-      .padding({ top: this.safeTop, bottom: 88 + this.safeBottom })
-      // 底部预留 88vp 悬浮 Tab 栏空间（高度 56 + 顶部 8 + 底部 12 + 自身 safeBottom），
+      .padding({ top: this.safeTop, bottom: 100 + this.safeBottom })
+      // 底部预留 100vp 悬浮 Tab 栏空间（高度 56 + 顶部 8 + 底部 28 + 自身 safeBottom），
       // 避免最后一张入口卡片被悬浮 Tab 栏遮挡
   }
 }

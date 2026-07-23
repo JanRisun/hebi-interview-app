@@ -215,3 +215,77 @@ export struct PageHero {
     .expandSafeArea(SAFE_AREA_TYPES, [SafeAreaEdge.TOP])
   }
 }
+
+// 高亮片段：命中片段 hit=true
+export interface HighlightSeg {
+  t: string;
+  hit: boolean;
+}
+
+// 将文本按关键词拆分为片段，供 HighlightText 拼接高亮
+export function splitHighlight(text: string, kw: string): HighlightSeg[] {
+  const res: HighlightSeg[] = [];
+  const k: string = (kw || '').trim();
+  if (!k || !text) {
+    res.push({ t: text ?? '', hit: false });
+    return res;
+  }
+  const lower: string = text.toLowerCase();
+  const lk: string = k.toLowerCase();
+  let i: number = 0;
+  while (i < text.length) {
+    const idx: number = lower.indexOf(lk, i);
+    if (idx < 0) {
+      res.push({ t: text.substring(i), hit: false });
+      break;
+    }
+    if (idx > i) {
+      res.push({ t: text.substring(i, idx), hit: false });
+    }
+    res.push({ t: text.substring(idx, idx + lk.length), hit: true });
+    i = idx + lk.length;
+  }
+  return res;
+}
+
+// 关键词高亮文本：命中片段用 hitColor 加粗，其余用 baseColor；singleLine 控制单行省略
+@Component
+export struct HighlightText {
+  @Prop text: string = '';
+  @Prop kw: string = '';
+  @Prop fontSize: number = 15;
+  @Prop baseColor: Resource = $r('app.color.text_primary');
+  @Prop hitColor: Resource = $r('app.color.brand');
+  @Prop baseWeight: number = FontWeight.Normal;
+  @Prop singleLine: boolean = false;
+
+  @Builder
+  highlightContent() {
+    ForEach(splitHighlight(this.text, this.kw),
+      (s: HighlightSeg) => {
+        Span(s.t)
+          .fontSize(this.fontSize)
+          .fontColor(s.hit ? this.hitColor : this.baseColor)
+          .fontWeight(s.hit ? FontWeight.Bold : this.baseWeight)
+      },
+      (s: HighlightSeg, idx: number) => idx + '_' + s.t)
+  }
+
+  build() {
+    if (this.singleLine) {
+      Text() {
+        this.highlightContent()
+      }
+      .width('100%')
+      .textAlign(TextAlign.Start)
+      .maxLines(1)
+      .textOverflow({ overflow: TextOverflow.Ellipsis })
+    } else {
+      Text() {
+        this.highlightContent()
+      }
+      .width('100%')
+      .textAlign(TextAlign.Start)
+    }
+  }
+}

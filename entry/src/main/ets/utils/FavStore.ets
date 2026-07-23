@@ -44,6 +44,13 @@ export class FavStore {
     }
     await FavStore.store!.put(KEY, JSON.stringify(ids));
     await FavStore.store!.flush();
+    FavStore.notifyChange();
     return now;
+  }
+
+  // 通知全局：收藏状态已变更，供展示页（收藏列表/个人中心）自动刷新
+  static notifyChange(): void {
+    const v: number = (AppStorage.get('favTagVersion') as number) ?? 0;
+    AppStorage.set('favTagVersion', v + 1);
   }
 }

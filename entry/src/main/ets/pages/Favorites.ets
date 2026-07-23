@@ -25,7 +25,19 @@ export struct Favorites {
   ds: LazyDataSource<FavItem> = new LazyDataSource<FavItem>([]);
   @Consume pageStack: NavPathStack;
 
+  // 订阅全局收藏/标签版本号：详情页加收藏后自动重读，无需重启 app
+  @StorageLink('favTagVersion') @Watch('onDataChange') tagVersion: number = 0;
+
   aboutToAppear(): void {
+    this.refreshData();
+  }
+
+  // 收藏/标签变更时触发（@Watch）：重读最新收藏列表
+  private onDataChange(): void {
+    this.refreshData();
+  }
+
+  private refreshData(): void {
     const ctx = getContext(this) as common.UIAbilityContext;
     DataStore.load(ctx).then(async () => {
       const ids: string[] = await FavStore.getIds();
