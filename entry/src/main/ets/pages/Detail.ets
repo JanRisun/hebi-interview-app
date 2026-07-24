@@ -1,6 +1,6 @@
 import { common } from '@kit.AbilityKit';
 import { DataStore } from '../model/DataStore';
-import { Article, Question, Section } from '../model/Types';
+import { AnswerRecord, Article, Question, Section } from '../model/Types';
 import { FavStore } from '../utils/FavStore';
 import { UserTagStore, PRESET_MARK_TAGS } from '../utils/UserTagStore';
 import { RecorderBar } from '../utils/RecorderBar';
@@ -10,6 +10,12 @@ import { SectionTitle, HighlightText } from '../utils/Ui';
 import { FONT, RADIUS, SPACE, SAFE_AREA_TYPES, SAFE_AREA_EDGES } from '../utils/Theme';
 import { motion } from '@kit.MultimodalAwarenessKit';
 import { BusinessError } from '@kit.BasicServicesKit';
+import { preferences } from '@kit.ArkData';
+import { promptAction } from '@kit.ArkUI';
+
+// 路由参数类型（规避 arkts-no-untyped-obj-literals）
+interface DetailParam { id: string; kind: string; kw?: string }
+interface AudioAnswerParam { id: string }
 
 @Component
 export struct Detail {
@@ -21,10 +27,15 @@ export struct Detail {
   @State fav: boolean = false;
   @State userTags: string[] = [];       // 当前内容的用户自定义标签
   @State kw: string = '';                 // 搜索进入时透传的关键词，用于在正文/标题高亮
+  @State practiceInfo: string = '未练习';   // 答题练习头部右侧展示：未练习 / 已自评 · YYYY-MM-DD
+  @State showStartDialog: boolean = false; // 「开始答题」弹窗：选择音频/视频作答
   @Prop params: Object;                    // 路由参数：{ id, kind, kw? }（Navigation 经 routeMap 透传）
+  @Consume pageStack: NavPathStack;
 
   // 加载令牌：仅应用最新一次 load 的结果，避免复用/快速切换时旧异步覆盖新内容
   private loadToken: number = 0;
+  // 题库答题页（questionView）滚动控制器：开始答题按钮 / 解析与示范跳转
+  private questionScroller: Scroller = new Scroller();
 
   // 悬浮「我的标记」按钮：位置、左右手偏好（'left' / 'right'）、子菜单展开状态
   private readonly FAB_SIZE: number = 56;
@@ -126,11 +137,49 @@ export struct Detail {
     } else {
       this.question = DataStore.questionById(id) ?? null;
       this.showAnswer = false;
+      // 答题练习头部右侧展示：优先展示音频作答记录（思考/作答时长），
+      // 其次展示 r_<id> 自评结果，都没有则显示「未练习」
+      try {
+        const prefs = await preferences.getPreferences(ctx, 'practice');
+        const ansJson: string = prefs.getSync('a_' + id, '') as string;
+        let info: string = '未练习';
+        if (ansJson) {
+          try {
+            const a: AnswerRecord = JSON.parse(ansJson) as AnswerRecord;
+            info = '已作答 · 思考 ' + this.fmtDur(a.thinkSec) + ' / 作答 ' + this.fmtDur(a.speakSec);
+          } catch (e) { /* ignore */ }
+        } else {
+          const rating: string = prefs.getSync('r_' + id, '') as string;
+          if (rating) {
+            info = '已自评 · ' + this.todayStr();
+          }
+        }
+        this.practiceInfo = info;
+      } catch (e) {
+        this.practiceInfo = '未练习';
+      }
     }
     if (token !== this.loadToken) return;
     this.fav = await FavStore.has(id);
     if (token !== this.loadToken) return;
     this.userTags = await UserTagStore.getUserTags(id);
+  }
+
+  // 取 YYYY-MM-DD 形式的本地日期（用于答题练习头部右侧）
+  private todayStr(): string {
+    const d: Date = new Date();
+    const y: number = d.getFullYear();
+    const m: string = (d.getMonth() + 1) < 10 ? '0' + (d.getMonth() + 1) : '' + (d.getMonth() + 1);
+    const day: string = d.getDate() < 10 ? '0' + d.getDate() : '' + d.getDate();
+    return y + '-' + m + '-' + day;
+  }
+
+  // 秒数格式化（用于答题练习头部：思考/作答时长）
+  private fmtDur(s: number): string {
+    const total: number = Math.max(0, Math.floor(s));
+    const m: number = Math.floor(total / 60);
+    const ss: number = total % 60;
+    return m > 0 ? `${m}分${ss}秒` : `${ss}秒`;
   }
 
   private async toggleFav(): Promise<void> {
@@ -144,6 +193,14 @@ export struct Detail {
     } else {
       this.userTags = await UserTagStore.addTag(this.itemId, p);
     }
+  }
+
+  // 题库答题页：导航栏右侧图标——收藏
+  @Builder favAction() {
+    Text(this.fav ? '★' : '☆')
+      .fontSize(FONT.title)
+      .fontColor(this.fav ? $r('app.color.favorite') : $r('app.color.text_tertiary'))
+      .onClick(() => this.toggleFav())
   }
 
   // 悬浮「我的标记」主按钮（无子菜单，菜单已提至根层避免裁切）
@@ -309,21 +366,24 @@ export struct Detail {
   }
 
   @Builder questionView() {
-    Scroll() {
+    Scroll(this.questionScroller) {
       Column() {
+        // 1. 题干区：结构化小标签 + 标题 + 案例内容 + 标签 + 朗读题目
+        //    结构化标签：题型（如「综合分析类」），灰色小芯片风格
+        Text(this.question!.type)
+          .fontSize(FONT.caption)
+          .fontColor($r('app.color.text_secondary'))
+          .backgroundColor($r('app.color.surface_variant'))
+          .borderRadius(RADIUS.sm)
+          .padding({ left: SPACE.sm, right: SPACE.sm, top: 2, bottom: 2 })
+          .margin({ bottom: SPACE.sm })
+          .alignSelf(ItemAlign.Start)
+        // 题目标题（大号粗体）
         HighlightText({ text: this.question!.title, kw: this.kw, fontSize: FONT.display, baseColor: $r('app.color.text_title'), baseWeight: FontWeight.Bold })
           .margin({ bottom: SPACE.sm })
-        Row() {
-          Text(this.question!.type)
-            .fontSize(FONT.caption)
-            .fontColor($r('app.color.brand'))
-            .backgroundColor($r('app.color.tag_bg'))
-            .borderRadius(RADIUS.sm)
-            .padding({ left: SPACE.sm, right: SPACE.sm, top: SPACE.xs, bottom: SPACE.xs })
-          HighlightText({ text: this.question!.source, kw: this.kw, fontSize: FONT.caption, baseColor: $r('app.color.text_secondary'), baseWeight: FontWeight.Normal })
-            .margin({ left: SPACE.sm })
-        }.margin({ bottom: SPACE.xs })
-        // 真题标签行：全部展示，自动换行
+        // 案例内容（题干）
+        HighlightText({ text: this.question!.prompt, kw: this.kw, fontSize: FONT.bodySm, baseColor: $r('app.color.text_body'), baseWeight: FontWeight.Normal })
+        // 真题标签行
         if (this.question!.tags !== undefined && this.question!.tags.length > 0) {
           Flex({ wrap: FlexWrap.Wrap }) {
             ForEach(this.question!.tags, (t: string) => {
@@ -333,13 +393,13 @@ export struct Detail {
                 .backgroundColor($r('app.color.tag_bg'))
                 .borderRadius(RADIUS.sm)
                 .padding({ left: SPACE.sm, right: SPACE.sm, top: SPACE.xs, bottom: SPACE.xs })
-                .margin({ top: SPACE.xs, right: SPACE.xs })
+                .margin({ top: SPACE.sm, right: SPACE.xs })
             }, (t: string) => t)
           }
           .width('100%')
-          .margin({ bottom: SPACE.md })
+          .margin({ top: SPACE.sm })
         }
-        // 语音播报：题目
+        // 朗读题目
         Row() {
           ReaderIcon({
             readId: this.itemId + ':q',
@@ -348,37 +408,138 @@ export struct Detail {
             label: '朗读题目'
           })
         }
-        .margin({ bottom: SPACE.md })
-        SectionTitle({ title: '题目' })
-          .margin({ top: SPACE.sm, bottom: SPACE.xs })
-        HighlightText({ text: this.question!.prompt, kw: this.kw, fontSize: FONT.bodySm, baseColor: $r('app.color.text_body'), baseWeight: FontWeight.Normal })
-          .margin({ bottom: SPACE.md })
-        // 开口自测：录音 + 回放 + 计时（按当前题 id 存本机）
-        RecorderBar({ qid: this.itemId })
-        if (this.showAnswer) {
+        .margin({ top: SPACE.sm })
+
+        // 2. 答题练习区：左侧「答题练习」标题，右侧练习状态；下方红色「开始答题」CTA
+        Column() {
           Row() {
-            SectionTitle({ title: '参考答案 · 逐字稿' }) {
+            Text('答题练习')
+              .fontSize(FONT.title)
+              .fontWeight(FontWeight.Bold)
+              .fontColor($r('app.color.text_title'))
+            Blank()
+            Text(this.practiceInfo)
+              .fontSize(FONT.caption)
+              .fontColor($r('app.color.text_tertiary'))
+          }
+          .width('100%')
+          .alignItems(VerticalAlign.Center)
+          .margin({ top: SPACE.lg, bottom: SPACE.sm })
+
+          // 开始答题按钮：红色全宽 CTA，点击弹出「选择答题方式」弹窗（音频/视频）
+          Button('开始答题')
+            .width('100%')
+            .height(48)
+            .fontSize(FONT.body)
+            .fontWeight(FontWeight.Medium)
+            .fontColor($r('app.color.on_primary'))
+            .backgroundColor($r('app.color.danger'))
+            .borderRadius(RADIUS.lg)
+            .onClick(() => {
+              this.showStartDialog = true;
+            })
+        }
+        .width('100%')
+        .margin({ top: SPACE.md, bottom: SPACE.md })
+        .alignItems(HorizontalAlign.Start)
+
+        // 3. 开口自测：录音 + 回放 + 转写 + 计时（按当前题 id 存本机）
+        Column() {
+          RecorderBar({ qid: this.itemId })
+        }
+        .width('100%')
+
+        // 4. 解析与示范：分段卡片（参考解析 / 知识拓展 / 来源）
+        Column() {
+          Text('解析与示范')
+            .fontSize(FONT.title)
+            .fontWeight(FontWeight.Bold)
+            .fontColor($r('app.color.brand'))
+            .margin({ top: SPACE.lg, bottom: SPACE.md })
+            .alignSelf(ItemAlign.Start)
+
+          // 4.1 参考解析（带朗读）
+          Column() {
+            Row() {
+              Text('📝 参考解析')
+                .fontSize(FONT.body)
+                .fontWeight(FontWeight.Medium)
+                .fontColor($r('app.color.text_title'))
+              Blank()
               ReaderIcon({
                 readId: this.itemId + ':ans',
-                title: this.question!.title + ' · 参考答案',
+                title: this.question!.title + ' · 参考解析',
                 text: this.question!.answerScript,
                 label: '朗读解析'
               })
             }
+            .width('100%')
+            .alignItems(VerticalAlign.Center)
+            .margin({ bottom: SPACE.sm })
+            HighlightText({ text: this.question!.answerScript, kw: this.kw, fontSize: FONT.bodySm, baseColor: $r('app.color.text_body'), baseWeight: FontWeight.Normal })
           }
           .width('100%')
-          .margin({ top: SPACE.sm, bottom: SPACE.xs })
-          HighlightText({ text: this.question!.answerScript, kw: this.kw, fontSize: FONT.bodySm, baseColor: $r('app.color.text_body'), baseWeight: FontWeight.Normal })
-        } else {
-          Button('查看参考答案（逐字稿）')
-            .onClick(() => { this.showAnswer = true; })
-            .backgroundColor($r('app.color.brand'))
-            .margin({ top: SPACE.xs, bottom: SPACE.xs })
-          Text('先自测口述，再对照参考答案')
-            .fontSize(FONT.bodySm)
-            .fontColor($r('app.color.text_secondary'))
-            .margin({ top: SPACE.xs })
+          .padding(SPACE.md)
+          .backgroundColor($r('app.color.surface'))
+          .borderRadius(RADIUS.md)
+          .margin({ bottom: SPACE.sm })
+          .alignItems(HorizontalAlign.Start)
+
+          // 4.2 知识拓展（标签 chip 列表）
+          Column() {
+            Text('💡 知识拓展')
+              .fontSize(FONT.body)
+              .fontWeight(FontWeight.Medium)
+              .fontColor($r('app.color.text_title'))
+              .margin({ bottom: SPACE.sm })
+              .alignSelf(ItemAlign.Start)
+            if (this.question!.tags !== undefined && this.question!.tags.length > 0) {
+              Flex({ wrap: FlexWrap.Wrap }) {
+                ForEach(this.question!.tags, (t: string) => {
+                  Text(t)
+                    .fontSize(FONT.caption)
+                    .fontColor($r('app.color.brand'))
+                    .backgroundColor($r('app.color.tag_bg'))
+                    .borderRadius(RADIUS.pill)
+                    .padding({ left: SPACE.md, right: SPACE.md, top: SPACE.xs, bottom: SPACE.xs })
+                    .margin({ top: SPACE.xs, right: SPACE.xs, bottom: SPACE.xs })
+                }, (t: string) => t)
+              }
+              .width('100%')
+            } else {
+              Text('暂无拓展标签')
+                .fontSize(FONT.caption)
+                .fontColor($r('app.color.text_tertiary'))
+            }
+          }
+          .width('100%')
+          .padding(SPACE.md)
+          .backgroundColor($r('app.color.surface'))
+          .borderRadius(RADIUS.md)
+          .margin({ bottom: SPACE.sm })
+          .alignItems(HorizontalAlign.Start)
+
+          // 4.3 来源
+          Column() {
+            Text('📚 来源')
+              .fontSize(FONT.body)
+              .fontWeight(FontWeight.Medium)
+              .fontColor($r('app.color.text_title'))
+              .margin({ bottom: SPACE.sm })
+              .alignSelf(ItemAlign.Start)
+            Text(this.question!.source)
+              .fontSize(FONT.bodySm)
+              .fontColor($r('app.color.text_body'))
+              .lineHeight(22)
+          }
+          .width('100%')
+          .padding(SPACE.md)
+          .backgroundColor($r('app.color.surface'))
+          .borderRadius(RADIUS.md)
+          .alignItems(HorizontalAlign.Start)
         }
+        .width('100%')
+        .alignItems(HorizontalAlign.Start)
       }
       .width('92%')
       .alignItems(HorizontalAlign.Start)
@@ -387,6 +548,96 @@ export struct Detail {
     }
     .layoutWeight(1)
     .width('100%')
+  }
+
+  // 「开始答题」弹窗：选择答题方式 → 音频作答（跳 AudioAnswer 页）/ 视频作答（暂未实现，给出 toast）
+  @Builder startDialogBuilder() {
+    Stack({ alignContent: Alignment.Center }) {
+      // 半透明遮罩：点击关闭弹窗
+      Column()
+        .width('100%')
+        .height('100%')
+        .backgroundColor('#80000000')
+        .onClick(() => { this.showStartDialog = false; })
+
+      // 弹窗主体（白底圆角卡片，两张方式卡片 + 标题）
+      Column() {
+        Text('选择答题方式')
+          .fontSize(FONT.title)
+          .fontWeight(FontWeight.Bold)
+          .fontColor($r('app.color.text_title'))
+          .margin({ top: SPACE.md, bottom: SPACE.lg })
+
+        Row({ space: SPACE.md }) {
+          // 音频作答卡片
+          Column() {
+            Column() {
+              Text('🎙️')
+                .fontSize(44)
+            }
+            .width(120)
+            .height(100)
+            .borderRadius(RADIUS.lg)
+            .backgroundColor('#FFE8E1')
+            .justifyContent(FlexAlign.Center)
+            .alignItems(HorizontalAlign.Center)
+            .margin({ bottom: SPACE.sm })
+            Text('音频作答')
+              .fontSize(FONT.body)
+              .fontWeight(FontWeight.Medium)
+              .fontColor($r('app.color.text_primary'))
+          }
+          .layoutWeight(1)
+          .padding(SPACE.md)
+          .borderRadius(RADIUS.lg)
+          .backgroundColor('#FFEDE5')
+          .onClick(() => {
+            this.showStartDialog = false;
+            // 跳转到音频作答页：仅当是真题且已加载
+            if (this.question) {
+              const p: AudioAnswerParam = { id: this.question.id };
+              this.pageStack.pushPathByName('AudioAnswer', p);
+            }
+          })
+
+          // 视频作答卡片（暂未实现，点击关闭弹窗 + 给出 toast 提示）
+          Column() {
+            Column() {
+              Text('🎥')
+                .fontSize(44)
+            }
+            .width(120)
+            .height(100)
+            .borderRadius(RADIUS.lg)
+            .backgroundColor('#FFF6D9')
+            .justifyContent(FlexAlign.Center)
+            .alignItems(HorizontalAlign.Center)
+            .margin({ bottom: SPACE.sm })
+            Text('视频作答')
+              .fontSize(FONT.body)
+              .fontWeight(FontWeight.Medium)
+              .fontColor($r('app.color.text_primary'))
+          }
+          .layoutWeight(1)
+          .padding(SPACE.md)
+          .borderRadius(RADIUS.lg)
+          .backgroundColor('#FFF8E5')
+          .onClick(() => {
+            this.showStartDialog = false;
+            // 视频作答暂未实现，后续接入相机/录制能力
+            promptAction.showToast({ message: '视频作答开发中，敬请期待', duration: 1500 });
+          })
+        }
+        .width('100%')
+        .padding({ left: SPACE.md, right: SPACE.md, bottom: SPACE.lg })
+      }
+      .width('88%')
+      .borderRadius(RADIUS.xl)
+      .backgroundColor($r('app.color.surface'))
+      .padding({ top: SPACE.sm, bottom: SPACE.sm })
+    }
+    .width('100%')
+    .height('100%')
   }
 
   @StorageProp('safeTop') safeTop: number = 0;
@@ -401,13 +652,9 @@ export struct Detail {
         Column() {
           BackHeader({
             title: this.kind === 'article' ? (this.article?.title ?? '知识点') : '真题详情',
-            showAction: true
-          }) {
-            Text(this.fav ? '★' : '☆')
-              .fontSize(FONT.title)
-              .fontColor(this.fav ? $r('app.color.favorite') : $r('app.color.text_tertiary'))
-              .onClick(() => this.toggleFav())
-          }
+            showAction: true,
+            action: this.favAction
+          })
         }
         .margin({ top: this.safeTop })
         .width('100%')
@@ -477,6 +724,11 @@ export struct Detail {
     .width('100%')
     .height('100%')
     .expandSafeArea(SAFE_AREA_TYPES, SAFE_AREA_EDGES)
+    // 「开始答题」弹窗：选择音频/视频作答方式（半透明遮罩 + 居中卡片）
+    .bindContentCover(this.showStartDialog, this.startDialogBuilder, {
+      modalTransition: ModalTransition.DEFAULT,
+      backgroundColor: '#00000000'
+    })
     .onAreaChange((_old: Area, nw: Area) => {
       this.stackW = nw.width as number;
       this.stackH = nw.height as number;

@@ -17,6 +17,7 @@ export struct QuestionBankView {
   @Prop root: boolean = false;     // true=底部主 Tab（无返回键，标题「题库」）；false=个人中心二级页
   @State bankFilter: string = '全部'; // 真题 / 母题 筛选
   private bankFilters: string[] = ['全部', '真题', '母题'];
+  private listScroller: Scroller = new Scroller(); // 列表滚动控制器，用于切换筛选/搜索时回到顶部
   @Consume pageStack: NavPathStack;
 
   aboutToAppear(): void {
@@ -119,15 +120,20 @@ export struct QuestionBankView {
       if (this.searchHits().length === 0) {
         EmptyState({ emoji: '🔍', text: this.kw.trim() ? `没有匹配「${this.kw.trim()}」的真题` : '该分类下暂无真题' })
       } else {
-        List() {
-          ForEach(this.searchHits(), (q: Question) => {
-            ListItem() {
+        Scroll(this.listScroller) {
+          Column() {
+            ForEach(this.searchHits(), (q: Question) => {
               this.questionRow(q)
-            }
-          }, (q: Question) => q.id)
+            }, (q: Question) => q.id)
+          }
+          .width('100%')
+          .alignItems(HorizontalAlign.Start)
         }
         .width('92%')
         .layoutWeight(1)
+        .scrollable(ScrollDirection.Vertical)
+        .scrollBar(BarState.Auto)
+        .align(Alignment.Top)
       }
     }
     .width('100%')
@@ -148,7 +154,9 @@ export struct QuestionBankView {
             .borderRadius(RADIUS.pill)
             .padding({ left: SPACE.md, right: SPACE.md, top: SPACE.xs, bottom: SPACE.xs })
             .onClick(() => {
+              if (this.bankFilter === f) return;
               this.bankFilter = f;
+              this.listScroller.scrollTo({ xOffset: 0, yOffset: 0 }); // 切换筛选后回到列表顶部
             })
         }, (f: string) => f)
       }
@@ -189,6 +197,7 @@ export struct QuestionBankView {
           .padding({ left: SPACE.sm })
           .onChange((v: string) => {
             this.kw = v;
+            this.listScroller.scrollTo({ xOffset: 0, yOffset: 0 }); // 搜索词变化时回到列表顶部
           })
         if (this.kw) {
           SymbolGlyph($r('sys.symbol.xmark_circle_fill'))
@@ -219,6 +228,8 @@ export struct QuestionBankView {
     .height('100%')
     .backgroundColor($r('app.color.background'))
     .expandSafeArea(SAFE_AREA_TYPES, SAFE_AREA_EDGES)
-    .padding({ top: this.safeTop, bottom: this.safeBottom })
+    // 主 Tab（root=true）底部叠加 100vp 悬浮 Tab 栏空间（56 栏高 + 8 顶gap + 28 底gap + 自身 safeBottom），
+    // 避免列表最后一项被悬浮 Tab 栏遮挡；二级页（root=false，无悬浮栏）只留系统 safeBottom。
+    .padding({ top: this.safeTop, bottom: (this.root ? 100 : 0) + this.safeBottom })
   }
 }

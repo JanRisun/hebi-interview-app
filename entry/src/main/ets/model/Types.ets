@@ -44,6 +44,16 @@ export interface Tags {
   keywords: string[];
 }
 
+// 答题记录（音频作答）：记录思考时长与作答时长
+export interface AnswerRecord {
+  id: string;          // 题目 id
+  title: string;      // 题目标题
+  thinkSec: number;   // 思考了多久（秒）
+  speakSec: number;   // 回答了多久（秒）
+  date: string;       // 作答完成时间 YYYY-MM-DD HH:mm
+  audioPath: string;  // 录音文件绝对路径
+}
+
 export interface AppData {
   meta: object;
   articles: Article[];

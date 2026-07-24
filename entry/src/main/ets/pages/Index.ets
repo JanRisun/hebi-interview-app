@@ -19,6 +19,7 @@ import { MyMarkView } from './MyMark';
 import { StudyRecord } from './StudyRecord';
 import { ExamRecord } from './ExamRecord';
 import { StudyPlan } from './StudyPlan';
+import { AudioAnswerView } from './AudioAnswer';
 import { FONT, SPACE, SAFE_AREA_TYPES, SAFE_AREA_EDGES } from '../utils/Theme';
 import { applyStatusBar } from '../utils/StatusBar';
 
@@ -176,6 +177,16 @@ struct Index {
     } else if (name === 'MyMark') {
       NavDestination() {
         MyMarkView()
+      }.hideTitleBar(true)
+      .onAppear(() => {
+        applyStatusBar('theme');
+      })
+      .onDisAppear(() => {
+        applyStatusBar('brand');
+      })
+    } else if (name === 'AudioAnswer') {
+      NavDestination() {
+        AudioAnswerView({ params: param })
       }.hideTitleBar(true)
       .onAppear(() => {
         applyStatusBar('theme');
