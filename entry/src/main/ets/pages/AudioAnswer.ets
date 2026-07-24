@@ -645,15 +645,16 @@ export struct AudioAnswerView {
                     .borderRadius(1)
                 }
               } else if (this.playbackCompleted) {
-                // 播放完毕：重新播放图标 ↻
-                Text('↻')
-                  .fontSize(22)
-                  .fontColor($r('app.color.on_primary'))
+                // 播放完毕：重新播放（循环箭头）。用 scale 整体放大加粗线条，避免 bold 变体导致的偏差
+                SymbolGlyph($r('sys.symbol.arrow_counterclockwise'))
+                  .fontSize(20)
+                  .fontColor([$r('app.color.on_primary')])
+                  .scale({ x: 1.3, y: 1.3 })
               } else {
-                // 暂停中/初始：播放图标 ▶
-                Text('▶')
+                // 暂停中/初始：白色实心三角播放图标（扁平填充无立体感，与暂停竖条风格一致）
+                SymbolGlyph($r('sys.symbol.play_fill'))
                   .fontSize(18)
-                  .fontColor($r('app.color.on_primary'))
+                  .fontColor([$r('app.color.on_primary')])
                   .offset({ x: 1 })
               }
             }
