@@ -14,7 +14,7 @@ export struct ProfileView {
   @State data: AppData | null = null;
   @State rated: RatedItem[] = [];        // 我的学习记录（自评索引）
   @State sessions: PracticeSession[] = []; // 我的真题演练记录
-  @State userTagPool: string[] = [];     // 我的标记（用户自定义标签）列表
+  @State markCount: number = 0;          // 我的标记（被标记的内容）数量
   @Consume pageStack: NavPathStack;
 
   // 订阅全局收藏/标签版本号：详情页加收藏/标签后自动重读，无需重启 app
@@ -35,7 +35,7 @@ export struct ProfileView {
       this.data = d;
       this.loadRecords(ctx);
     });
-    UserTagStore.allTags().then((t: string[]) => { this.userTagPool = t; });
+    UserTagStore.markCount().then((c: number) => { this.markCount = c; });
   }
 
   private onKnowledge(): void {
@@ -46,9 +46,6 @@ export struct ProfileView {
   }
   private onMyTags(): void {
     this.pageStack.pushPathByName('MyMark', {} as Record<string, Object>);
-  }
-  private onTabBar(): void {
-    this.pageStack.pushPathByName('TabBarEditor', {} as Record<string, Object>);
   }
 
   // 从本地 prefs 读取学习记录与演练记录
@@ -215,14 +212,11 @@ export struct ProfileView {
             Row({ space: SPACE.sm }) {
               this.statLink(`${this.data.articles.length}`, '知识点', () => this.onKnowledge())
               this.statLink(`${this.data.questions.length}`, '真题库', () => this.onQuestionBank())
-              this.statLink(`${this.userTagPool.length}`, '我的标记', () => this.onMyTags())
+              this.statLink(`${this.markCount}`, '我的标记', () => this.onMyTags())
             }
             .width('100%')
             .margin({ bottom: SPACE.sm })
           }
-
-          // 首页标签栏管理：编辑顺序、显隐与名称
-          this.entryRow('🧩', $r('app.color.brand_light'), $r('app.color.brand'), '首页标签栏管理', '编辑顺序、显隐与名称', () => this.onTabBar())
 
           // 入口卡片
           this.entryRow('🩷', $r('app.color.accent_soft'), $r('app.color.accent'), '我的收藏', '已收藏的题目与知识点', () => this.onFavorites())

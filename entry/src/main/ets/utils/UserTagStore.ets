@@ -3,6 +3,9 @@ import { common } from '@kit.AbilityKit';
 
 const KEY: string = 'user_tags_map';
 
+// 预设快捷标记：详情页「我的标记」悬浮按钮与个人中心「我的标记」共用，保证选项完全一致
+export const PRESET_MARK_TAGS: string[] = ['常考', '重点', '难点', '易错', '稍后再看', '已掌握'];
+
 // 用户自定义标签存储：基于 Preferences 持久化「内容 id → 标签数组」映射
 // 与 FavStore 共用 'interview_pref' 文件，使用独立 key。
 // 采用内存缓存 cache 作为唯一数据源，所有读写都基于它，整体持久化，
@@ -59,6 +62,12 @@ export class UserTagStore {
     await UserTagStore.persist();
     UserTagStore.notifyChange();
     return arr.slice();
+  }
+
+  // 被标记的内容数量（即映射中标签非空的内容 id 个数），用于个人中心「我的标记」计数
+  static async markCount(): Promise<number> {
+    const ids: string[] = Object.keys(UserTagStore.cache);
+    return ids.filter((id: string): boolean => (UserTagStore.cache[id]?.length ?? 0) > 0).length;
   }
 
   // 全部用户自定义标签（去重、排序），用于筛选条

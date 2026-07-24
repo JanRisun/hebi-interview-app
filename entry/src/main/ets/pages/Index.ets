@@ -10,7 +10,6 @@ import { CategoryView } from './Category';
 import { FlashcardView } from './Flashcard';
 import { PracticeView } from './Practice';
 import { ProfileView } from './Profile';
-import { TabBarEditor } from './TabBarEditor';
 import { Detail } from './Detail';
 import { SearchPage } from './Search';
 import { Favorites } from './Favorites';
@@ -21,8 +20,6 @@ import { StudyRecord } from './StudyRecord';
 import { ExamRecord } from './ExamRecord';
 import { StudyPlan } from './StudyPlan';
 import { FONT, SPACE, SAFE_AREA_TYPES, SAFE_AREA_EDGES } from '../utils/Theme';
-import { common } from '@kit.AbilityKit';
-import { TabBarStore, TabItem } from '../utils/TabBarStore';
 import { applyStatusBar } from '../utils/StatusBar';
 
 // 自定义悬浮底部 Tab 栏固定高度 + 上下间距
@@ -39,18 +36,10 @@ struct Index {
   // Tabs 控制器：自定义 Tab 栏点击时主动驱动 Tabs 切换
   private tabsController: TabsController = new TabsController();
 
-  // 底部 Tab 栏配置：顺序 + 显隐 + 名称（来自 AppStorage，默认四项）
-  @StorageLink('tabBarConfig') @Watch('onTabsChange') tabs: TabItem[] = TabBarStore.defaultTabs();
-
   // 通知/深链启动：若来自今日提醒(target=today)，自动直达备考计划页
   aboutToAppear(): void {
     // 主页 4 个 Tab 均为品牌渐变头部覆盖状态栏，状态栏图标统一用浅色（白）
     applyStatusBar('brand');
-    // 从持久化读取 Tab 配置（异步），读取到后回写 AppStorage 触发 Tab 栏刷新
-    const ctx = getContext(this) as common.UIAbilityContext;
-    TabBarStore.load(ctx).then((t: TabItem[]) => {
-      this.tabs = t;
-    });
     const target: string = AppStorage.get<string>('launchTarget') ?? '';
     if (target === 'today') {
       AppStorage.set('launchTarget', '');
@@ -60,16 +49,6 @@ struct Index {
         this.pageStack.pushPathByName('StudyPlan', {} as Record<string, Object>);
       }, 0);
     }
-  }
-
-  // Tab 配置变化（顺序 / 显隐 / 名称）：clamp 当前选中项并同步 Tabs 控制器
-  private onTabsChange(): void {
-    const vis: TabItem[] = this.tabs.filter((t: TabItem) => t.visible);
-    if (vis.length === 0) return;
-    if (this.current >= vis.length) {
-      this.current = 0;
-    }
-    this.tabsController.changeIndex(this.current);
   }
 
   // 自定义底部 Tab 按钮（HMOS 代码工坊风格：白底胶囊悬浮、图标+文字上下、
@@ -94,22 +73,6 @@ struct Index {
         this.tabsController.changeIndex(idx);
       }
     })
-  }
-
-  // 按 key 渲染对应主 Tab 内容
-  @Builder
-  private tabContent(key: string) {
-    if (key === 'material') {
-      CategoryView()
-    } else if (key === 'flashcard') {
-      FlashcardView()
-    } else if (key === 'practice') {
-      QuestionBankView({ root: true })
-    } else if (key === 'profile') {
-      ProfileView()
-    } else {
-      CategoryView()
-    }
   }
 
   @StorageProp('safeTop') safeTop: number = 0;
@@ -220,16 +183,6 @@ struct Index {
       .onDisAppear(() => {
         applyStatusBar('brand');
       })
-    } else if (name === 'TabBarEditor') {
-      NavDestination() {
-        TabBarEditor()
-      }.hideTitleBar(true)
-      .onAppear(() => {
-        applyStatusBar('theme');
-      })
-      .onDisAppear(() => {
-        applyStatusBar('brand');
-      })
     }
   }
 
@@ -239,11 +192,10 @@ struct Index {
       Stack({ alignContent: Alignment.Bottom }) {
         // 4 Tab 内容区（隐藏默认 tabBar，留出空间给下方悬浮 Tab 栏）
         Tabs({ barPosition: BarPosition.End, controller: this.tabsController }) {
-          ForEach(this.tabs.filter((t: TabItem) => t.visible), (t: TabItem, idx: number) => {
-            TabContent() {
-              this.tabContent(t.key)
-            }.tabBar(this.tabBarItem(idx, TabBarStore.icon(t.key), t.label))
-          }, (t: TabItem) => t.key)
+          TabContent() { CategoryView() }.tabBar(this.tabBarItem(0, $r('sys.symbol.book'), '知识库'))
+          TabContent() { FlashcardView() }.tabBar(this.tabBarItem(1, $r('sys.symbol.bookmark'), '速记卡'))
+          TabContent() { QuestionBankView({ root: true }) }.tabBar(this.tabBarItem(2, $r('sys.symbol.checkmark_circle'), '题库'))
+          TabContent() { ProfileView() }.tabBar(this.tabBarItem(3, $r('sys.symbol.person'), '个人中心'))
         }
         .barPosition(BarPosition.End)
         .barHeight(0)
@@ -258,9 +210,10 @@ struct Index {
         // 悬浮自定义底部 Tab 栏：白底胶囊 + 圆角 + 阴影，左右各 4% 外边距
         Column() {
           Row() {
-            ForEach(this.tabs.filter((t: TabItem) => t.visible), (t: TabItem, idx: number) => {
-              this.tabBarItem(idx, TabBarStore.icon(t.key), t.label)
-            }, (t: TabItem) => t.key)
+            this.tabBarItem(0, $r('sys.symbol.book'), '知识库')
+            this.tabBarItem(1, $r('sys.symbol.bookmark'), '速记卡')
+            this.tabBarItem(2, $r('sys.symbol.checkmark_circle'), '题库')
+            this.tabBarItem(3, $r('sys.symbol.person'), '个人中心')
           }
           .width('92%')
           .height(TAB_BAR_HEIGHT)
@@ -325,7 +278,7 @@ struct IndexPreview {
       Tabs({ barPosition: BarPosition.End, controller: this.tabsController }) {
         TabContent() { CategoryView() }.tabBar(this.tabBarItem(0, $r('sys.symbol.book'), '知识库'))
         TabContent() { FlashcardView() }.tabBar(this.tabBarItem(1, $r('sys.symbol.bookmark'), '速记卡'))
-        TabContent() { PracticeView() }.tabBar(this.tabBarItem(2, $r('sys.symbol.checkmark_circle'), '真题模考'))
+        TabContent() { QuestionBankView({ root: true }) }.tabBar(this.tabBarItem(2, $r('sys.symbol.checkmark_circle'), '题库'))
         TabContent() { ProfileView() }.tabBar(this.tabBarItem(3, $r('sys.symbol.person'), '个人中心'))
       }
       .barPosition(BarPosition.End)
@@ -339,7 +292,7 @@ struct IndexPreview {
         Row() {
           this.tabBarItem(0, $r('sys.symbol.book'), '知识库')
           this.tabBarItem(1, $r('sys.symbol.bookmark'), '速记卡')
-          this.tabBarItem(2, $r('sys.symbol.checkmark_circle'), '真题模考')
+          this.tabBarItem(2, $r('sys.symbol.checkmark_circle'), '题库')
           this.tabBarItem(3, $r('sys.symbol.person'), '个人中心')
         }
         .width('92%')

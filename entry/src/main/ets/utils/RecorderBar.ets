@@ -1,7 +1,7 @@
 // 开口自测录音条：复用组件，按题目 id 存录音文件
 // 能力：麦克风权限检查/动态申请 + OH Audio 直录 PCM(WAV) + AVPlayer 回放 + 计时
 // 仅用本机沙箱文件，不上传。API 参考 HarmonyOS MediaKit / Core File Kit / abilityAccessCtrl
-import { common } from '@kit.AbilityKit';
+import { common, Want } from '@kit.AbilityKit';
 import { media } from '@kit.MediaKit';
 import { audio } from '@kit.AudioKit';
 import { BusinessError } from '@kit.BasicServicesKit';
@@ -9,6 +9,8 @@ import { fileIo } from '@kit.CoreFileKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import abilityAccessCtrl from '@ohos.abilityAccessCtrl';
 import bundleManager from '@ohos.bundle.bundleManager';
+import { promptAction } from '@kit.ArkUI';
+import { speechRecognizer } from '@kit.CoreSpeechKit';
 import { FONT, RADIUS, SPACE } from '../utils/Theme';
 import { AsrHelper } from '../utils/AsrHelper';
 
@@ -19,6 +21,7 @@ const TAG: string = 'RecorderBar';
 export struct RecorderBar {
   @Prop @Watch('onQidChange') qid: string = '';   // 题目 id，录音文件按此命名
   @State permOk: boolean = false;     // 麦克风权限是否授权
+  @State permDenied: boolean = false;  // 用户曾拒绝过（用于切换按钮文案 & 弹窗指引）
   @State recording: boolean = false;   // 是否正在录音
   @State playing: boolean = false;     // 是否正在回放
   @State paused: boolean = false;      // 是否暂停回放（可继续）
@@ -28,6 +31,19 @@ export struct RecorderBar {
   @State transcribing: boolean = false;   // 是否正在本地转写
   @State hasTranscript: boolean = false; // 该题目是否已有转写文本
   @State transcriptText: string = '';    // 转写结果（端侧语音识别）
+
+  // 实时语音转写（语音→文字）：录音时用 speechRecognizer 实时识别，把文字渲染到我们自己可控的 Text 窗口，
+  // 保证“输出窗口”一定可见（解决 AICaptionComponent 静默无输出、且拿不到文字字符串的问题）。
+  // 注意：speechRecognizer 的 online 参数语义为 0=在线(云侧) / 1=离线(端侧模型)；此设备未预置离线中文模型，
+  // 所以必须用 0(云侧)，并保证网络可用。
+  private asrEngine?: speechRecognizer.SpeechRecognitionEngine;
+  private asrSession: string = '';
+  private asrListening: boolean = false; // startListening 成功后置 true（onStart 回调），之后才能 writeAudio
+  private asrCommitted: string = '';     // 已确认整句（isFinal）累积
+  @State liveText: string = '';          // 实时识别文字（自己的窗口显示）
+  @State asrError: string = '';          // 识别失败原因（可见，便于排查）
+  @State captionShown: boolean = false;  // 是否展示实时转写窗口
+  @State manualText: string = '';        // 手动编辑的文字稿（ASR 不可用时兜底）
 
   private audioCapturer: audio.AudioCapturer | undefined = undefined;  // OH Audio 直录 PCM
   private avPlayer: media.AVPlayer | undefined = undefined;
@@ -62,6 +78,11 @@ export struct RecorderBar {
     this.forceStop();
     this.transcriptText = '';
     this.hasTranscript = false;
+    this.captionShown = false;   // 切题复位：隐藏上一题的字幕区
+    this.liveText = '';
+    this.asrError = '';
+    this.asrCommitted = '';
+    this.manualText = '';
     this.loadTranscript();
   }
 
@@ -121,6 +142,7 @@ export struct RecorderBar {
       const tokenId: number = bundleInfo.appInfo.accessTokenId;
       const status = await atManager.checkAccessToken(tokenId, 'ohos.permission.MICROPHONE');
       this.permOk = (status === abilityAccessCtrl.GrantStatus.PERMISSION_GRANTED);
+      this.permDenied = !this.permOk;
       if (this.permOk) {
         this.hasFile = this.fileExists();
         this.loadTranscript();
@@ -131,20 +153,64 @@ export struct RecorderBar {
     }
   }
 
-  // 动态申请麦克风权限（运行时弹窗）
+  // 动态申请麦克风权限（运行时弹窗）；拒绝后弹自定义提示，引导用户去系统设置
   private async requestPerm(): Promise<void> {
+    // 先同步静默检查（处理从系统设置手动授权后返回的场景）
+    await this.checkPerm();
+    if (this.permOk) return;
+
     try {
       const atManager = abilityAccessCtrl.createAtManager();
       const result = await atManager.requestPermissionsFromUser(
         getContext(this) as common.UIAbilityContext,
         ['ohos.permission.MICROPHONE']
       );
-      this.permOk = (result.authResults[0] === 0);
+      this.permOk = (result.authResults[0] === abilityAccessCtrl.GrantStatus.PERMISSION_GRANTED);
       if (this.permOk) {
+        this.permDenied = false;
         this.hasFile = this.fileExists();
+      } else {
+        this.permDenied = true;
+        // 弹窗告知用户如何手动开启
+        promptAction.showDialog({
+          title: '麦克风权限未授权',
+          message: '口头作答需要麦克风权限。您可重试并在系统弹窗中选择「允许」，或前往系统设置手动开启。',
+          buttons: [
+            { text: '重试', color: '#007DFF' },
+            { text: '去设置', color: '#007DFF' },
+          ],
+        }).then((res) => {
+          if (res.index === 0) {
+            // 重试 → 再次拉起系统权限弹窗
+            this.requestPerm();
+          } else if (res.index === 1) {
+            // 去设置 → 打开应用信息页，用户可手动改权限
+            this.openAppSettings();
+          }
+        });
       }
     } catch (e) {
       hilog.error(DOMAIN, TAG, 'requestPerm fail: %{public}s', JSON.stringify(e));
+    }
+  }
+
+  // 跳转系统设置 → 本应用详情（用户可手动开启麦克风权限）
+  private openAppSettings(): void {
+    try {
+      const ctx = getContext(this) as common.UIAbilityContext;
+      const want: Want = {
+        bundleName: 'com.huawei.hmos.settings',
+        abilityName: 'com.huawei.hmos.settings.MainAbility',
+        uri: 'application_info_entry',
+        parameters: {
+          // 传入当前应用 bundleName，设置页自动定位到本应用
+          pushParams: ctx.abilityInfo.bundleName,
+        },
+      };
+      ctx.startAbility(want);
+    } catch (e) {
+      hilog.error(DOMAIN, TAG, 'openAppSettings fail: %{public}s', JSON.stringify(e));
+      promptAction.showToast({ message: '无法跳转设置，请手动开启', duration: 2000 });
     }
   }
 
@@ -256,12 +322,21 @@ export struct RecorderBar {
             hilog.error(DOMAIN, TAG, 'readData 写文件失败: %{public}s', e2.message);
           }
         }
+        // 实时语音转写：同一块 PCM 喂给 speechRecognizer，识别文字写入 liveText（自己的窗口显示）
+        if (this.asrEngine && this.asrSession) {
+          this.feedAsr(buffer);
+        }
       });
       await capturer.start();
       hilog.info(DOMAIN, TAG, 'capturer.start 成功，开始采集麦克风');
       this.recording = true;
       this.sec = 0;
+      this.liveText = '';
+      this.asrError = '';
+      this.asrCommitted = '';
+      this.captionShown = true;   // 展示实时转写窗口（说话即出文字）
       this.startTick('rec');
+      this.startRealtimeAsr();    // 启动实时语音识别（文字写入 liveText）
     } catch (e) {
       const err = e as BusinessError;
       hilog.error(DOMAIN, TAG, 'startRec fail: %{public}s', err.message);
@@ -293,8 +368,133 @@ export struct RecorderBar {
       const err = e as BusinessError;
       hilog.error(DOMAIN, TAG, 'stopRec fail: %{public}s', err.message);
     }
-    this.recording = false;
-    this.hasFile = this.fileExists();
+      this.recording = false;
+      this.hasFile = this.fileExists();
+      this.stopRealtimeAsr();   // 结束实时识别并保存文字稿
+    }
+
+  // 把 readData 的 PCM 块按 1280 字节切片喂给识别引擎（writeAudio 仅支持 640/1280，末块补零）。
+  // 必须在 startListening 成功（onStart 触发 → asrListening=true）后才能调用，否则报 1002200010。
+  private feedAsr(buffer: ArrayBuffer): void {
+    if (!this.asrEngine || !this.asrSession || !this.asrListening) return;
+    const full: Uint8Array = new Uint8Array(buffer);
+    const CHUNK: number = 1280;
+    for (let off: number = 0; off < full.length; off += CHUNK) {
+      const end: number = Math.min(off + CHUNK, full.length);
+      const slice: Uint8Array = full.subarray(off, end);
+      let chunk: Uint8Array;
+      if (slice.length < CHUNK) {
+        chunk = new Uint8Array(CHUNK);
+        chunk.set(slice);
+      } else {
+        chunk = slice;
+      }
+      try {
+        this.asrEngine.writeAudio(this.asrSession, chunk);
+      } catch (e) {
+        const ce = e as BusinessError;
+        hilog.error(DOMAIN, TAG, 'asr writeAudio fail: %{public}s', ce.message);
+      }
+    }
+  }
+
+  // 启动实时语音识别：创建引擎 → 设监听 → startListening，文字持续写入 liveText
+  private startRealtimeAsr(): void {
+    const extraParam: Record<string, Object> = { 'locate': 'CN', 'recognizerMode': 'long' };
+    const initParams: speechRecognizer.CreateEngineParams = {
+      language: 'zh-CN',
+      online: 1,                       // 本 SDK（API 20）仅文档化支持 online:1（离线），设备需预置中文语音模型
+      extraParams: extraParam
+    };
+    speechRecognizer.createEngine(initParams, (err: BusinessError, engine: speechRecognizer.SpeechRecognitionEngine): void => {
+      if (err || !engine) {
+        this.asrError = '本设备未预置中文语音识别模型，无法自动转写（错误 ' + (err ? (err.code + ':' + err.message) : '空引擎') + '）。请在系统「设置→智慧语音→语音识别」下载启用中文模型，或在下方手动录入转写文字稿。';
+        hilog.error(DOMAIN, TAG, 'asr createEngine fail: %{public}s', this.asrError);
+        return;
+      }
+      this.asrEngine = engine;
+      this.asrSession = 'live_' + Date.now().toString();
+      engine.setListener({
+        // onStart = startListening 成功！此时才允许 writeAudio（SDK 强约束）。
+        onStart: (_sid: string, _msg: string): void => { this.asrListening = true; },
+        onEvent: (_sid: string, _code: number, _msg: string): void => { /* 忽略内部事件 */ },
+        onResult: (_sid: string, result: speechRecognizer.SpeechRecognitionResult): void => {
+          // result.isFinal=true 为整句结束；否则为当前句的中间结果
+          if (result.isFinal) {
+            this.asrCommitted += result.result;
+            this.liveText = this.asrCommitted;
+          } else {
+            this.liveText = this.asrCommitted + result.result;
+          }
+        },
+        onComplete: (_sid: string, _msg: string): void => {
+          if (this.asrEngine) {
+            try { this.asrEngine.shutdown(); } catch (e) { /* ignore */ }
+            this.asrEngine = undefined;
+          }
+          this.asrListening = false;
+        },
+        onError: (_sid: string, code: number, msg: string): void => {
+          this.asrError = '识别出错(' + code + '): ' + msg;
+          hilog.error(DOMAIN, TAG, 'asr onError: %{public}s', this.asrError);
+          if (this.asrEngine) {
+            try { this.asrEngine.shutdown(); } catch (e) { /* ignore */ }
+            this.asrEngine = undefined;
+          }
+          this.asrSession = '';
+          this.asrListening = false;
+        }
+      });
+      const audioInfo: speechRecognizer.AudioInfo = { audioType: 'pcm', sampleRate: 16000, soundChannel: 1, sampleBit: 16 };
+      const startParams: speechRecognizer.StartParams = {
+        sessionId: this.asrSession,
+        audioInfo: audioInfo,
+        extraParams: { 'recognitionMode': 1, 'maxAudioDuration': 600000 }
+      };
+      // startListening 返回 void，失败通过 onError 回调上报；同步 try/catch 仅捕获参数错误
+      try {
+        engine.startListening(startParams);
+      } catch (e) {
+        const ce = e as BusinessError;
+        this.asrError = '启动识别失败：' + ce.message;
+        if (this.asrEngine) {
+          try { this.asrEngine.shutdown(); } catch (e2) { /* ignore */ }
+          this.asrEngine = undefined;
+        }
+        this.asrSession = '';
+      }
+    });
+  }
+
+  // 停止实时识别：finish 收尾，并把已识别文字存本机（供详情页「我的口述转写」持久化）
+  private stopRealtimeAsr(): void {
+    const eng = this.asrEngine;
+    const sid = this.asrSession;
+    this.asrEngine = undefined;
+    this.asrSession = '';
+    if (eng && sid) {
+      try { eng.finish(sid); } catch (e) { /* ignore */ }
+      try { eng.shutdown(); } catch (e) { /* ignore */ }
+    }
+    this.commitLiveTranscript();
+  }
+
+  // 把实时识别结果（或手动录入的兜底文字）写入本机 txt（供详情页持久化展示）；仅在确有文字时写入
+  private commitLiveTranscript(): void {
+    // ASR 失败时优先取手动录入的文字稿；识别成功时取 liveText
+    const text: string = (this.asrError ? this.manualText : this.liveText).trim();
+    if (text.length === 0) return;
+    try {
+      const fd = fileIo.openSync(
+        this.transcriptPath(),
+        fileIo.OpenMode.READ_WRITE | fileIo.OpenMode.CREATE | fileIo.OpenMode.TRUNC
+      );
+      fileIo.writeSync(fd.fd, text);
+      fileIo.closeSync(fd.fd);
+      hilog.info(DOMAIN, TAG, 'commitLiveTranscript 写入 %{public}d 字', text.length);
+    } catch (e) {
+      hilog.error(DOMAIN, TAG, 'commitLiveTranscript fail');
+    }
   }
 
   // 回放：创建 AVPlayer → 设置 fd 源 → 待 stateChange 到 prepared 再 play
@@ -447,14 +647,25 @@ export struct RecorderBar {
         .margin({ bottom: SPACE.xs })
 
       if (!this.permOk) {
-        Button('授权麦克风，开始开口练习')
-          .width('100%')
-          .height(40)
-          .fontSize(14)
-          .backgroundColor($r('app.color.brand'))
-          .fontColor($r('app.color.on_primary'))
-          .borderRadius(RADIUS.pill)
-          .onClick(() => this.requestPerm())
+        if (this.permDenied) {
+          Button('麦克风未授权，重试或去设置')
+            .width('100%')
+            .height(40)
+            .fontSize(14)
+            .backgroundColor($r('app.color.warning'))
+            .fontColor($r('app.color.on_primary'))
+            .borderRadius(RADIUS.pill)
+            .onClick(() => this.requestPerm())
+        } else {
+          Button('授权麦克风，开始开口练习')
+            .width('100%')
+            .height(40)
+            .fontSize(14)
+            .backgroundColor($r('app.color.brand'))
+            .fontColor($r('app.color.on_primary'))
+            .borderRadius(RADIUS.pill)
+            .onClick(() => this.requestPerm())
+        }
       } else {
         Row({ space: 10 }) {
           Button(this.recording ? '停止录音' : '开始录音')
@@ -546,7 +757,81 @@ export struct RecorderBar {
           .fontColor($r('app.color.text_secondary'))
           .alignSelf(ItemAlign.Start)
           .margin({ top: SPACE.xs })
-        if (this.hasTranscript) {
+
+        // 实时语音转写窗口（我们自己渲染的 Text，保证一定可见）：录音中实时显示识别文字，
+        // 识别失败也显示原因，并提供可编辑文本框供手动录入/粘贴转写结果，保证交付。
+        if (this.captionShown) {
+          Column() {
+            Row({ space: 6 }) {
+              Text('实时转写（语音→文字）')
+                .fontSize(FONT.caption)
+                .fontColor($r('app.color.text_secondary'))
+              if (this.recording) {
+                Text('● 识别中')
+                  .fontSize(FONT.caption)
+                  .fontColor($r('app.color.danger'))
+              } else if (this.liveText) {
+                Text('✓ 已转写')
+                  .fontSize(FONT.caption)
+                  .fontColor($r('app.color.brand'))
+              }
+            }
+            .width('100%')
+            .margin({ bottom: 4 })
+            // 1. 识别状态 / 错误说明
+            if (this.asrError) {
+              Text(this.asrError + '；可点击下方文本框手动录入/粘贴口述内容，录音结束后会一并保存。')
+                .width('100%')
+                .fontSize(FONT.caption)
+                .fontColor($r('app.color.danger'))
+                .lineHeight(20)
+                .backgroundColor($r('app.color.surface'))
+                .borderRadius(RADIUS.md)
+                .padding(10)
+                .alignSelf(ItemAlign.Start)
+            } else if (this.liveText) {
+              Text(this.liveText)
+                .width('100%')
+                .fontSize(FONT.body)
+                .fontColor($r('app.color.text_body'))
+                .lineHeight(22)
+                .backgroundColor($r('app.color.surface'))
+                .borderRadius(RADIUS.md)
+                .padding(10)
+                .alignSelf(ItemAlign.Start)
+            } else {
+              Text('正在聆听，请开始口述作答…')
+                .width('100%')
+                .fontSize(FONT.body)
+                .fontColor($r('app.color.text_secondary'))
+                .lineHeight(22)
+                .backgroundColor($r('app.color.surface'))
+                .borderRadius(RADIUS.md)
+                .padding(10)
+                .alignSelf(ItemAlign.Start)
+            }
+            // 2. 可编辑文本框：识别失败时手动录入；识别成功时可在此基础上修订
+            TextArea({ placeholder: this.asrError ? '本设备未预置中文语音模型，可在此手动录入转写文字稿…' : '可在识别结果上修订…', text: this.asrError ? this.manualText : this.liveText })
+              .width('100%')
+              .height(80)
+              .fontSize(FONT.body)
+              .fontColor($r('app.color.text_body'))
+              .backgroundColor($r('app.color.surface'))
+              .borderRadius(RADIUS.md)
+              .margin({ top: 6 })
+              .onChange((value: string): void => {
+                if (this.asrError) {
+                  this.manualText = value;
+                } else {
+                  this.liveText = value;
+                }
+              })
+          }
+          .width('100%')
+          .margin({ top: SPACE.xs })
+        }
+
+        if (this.hasTranscript && !this.captionShown) {
           Text('我的口述转写（本地语音识别，对照逐字稿找差距）')
             .fontSize(FONT.caption)
             .fontColor($r('app.color.brand'))

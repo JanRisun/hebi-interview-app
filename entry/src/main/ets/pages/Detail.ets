@@ -2,15 +2,14 @@ import { common } from '@kit.AbilityKit';
 import { DataStore } from '../model/DataStore';
 import { Article, Question, Section } from '../model/Types';
 import { FavStore } from '../utils/FavStore';
-import { UserTagStore } from '../utils/UserTagStore';
+import { UserTagStore, PRESET_MARK_TAGS } from '../utils/UserTagStore';
 import { RecorderBar } from '../utils/RecorderBar';
 import { ReaderIcon } from '../utils/SpeechReader';
 import { BackHeader } from '../utils/BackHeader';
-import { SectionTitle, TagChip, HighlightText } from '../utils/Ui';
+import { SectionTitle, HighlightText } from '../utils/Ui';
 import { FONT, RADIUS, SPACE, SAFE_AREA_TYPES, SAFE_AREA_EDGES } from '../utils/Theme';
-
-// 预设快捷标记（点击切换：未加→添加，已加→移除）
-const PRESET_TAGS: string[] = ['已背', '易错', '重点', '常考', '待复习', '难点'];
+import { motion } from '@kit.MultimodalAwarenessKit';
+import { BusinessError } from '@kit.BasicServicesKit';
 
 @Component
 export struct Detail {
@@ -21,15 +20,86 @@ export struct Detail {
   @State showAnswer: boolean = false;   // 真题详情：参考答案默认隐藏，手动展开
   @State fav: boolean = false;
   @State userTags: string[] = [];       // 当前内容的用户自定义标签
-  @State customInput: string = '';       // 自定义标签输入框
   @State kw: string = '';                 // 搜索进入时透传的关键词，用于在正文/标题高亮
   @Prop params: Object;                    // 路由参数：{ id, kind, kw? }（Navigation 经 routeMap 透传）
 
   // 加载令牌：仅应用最新一次 load 的结果，避免复用/快速切换时旧异步覆盖新内容
   private loadToken: number = 0;
 
+  // 悬浮「我的标记」按钮：位置、左右手偏好（'left' / 'right'）、子菜单展开状态
+  private readonly FAB_SIZE: number = 56;
+  private readonly FAB_MARGIN: number = 16;
+  @State stackW: number = 0;            // 根容器宽度
+  @State stackH: number = 0;            // 根容器高度
+  @State fabInit: boolean = false;      // 是否已按当前容器尺寸初始化过位置
+  @State fabX: number = 0;              // 悬浮按钮 x（相对根容器左上角）
+  @State fabY: number = 0;              // 悬浮按钮 y
+  @State fabSide: string = 'right';     // 默认右手（右下角）
+  @State fabAnimating: boolean = false; // 是否启用位置平滑过渡（左右手切换时）
+  @State showMenu: boolean = false;     // 是否展开打标记波轮
+  private dragging: boolean = false;    // 是否正在拖动按钮
+  private gripAvailable: boolean = false; // 设备是否支持「智感握姿」(操作手感知)
+  // 智感握姿回调：系统上报当前触控操作手（左/右手），按钮自动换边
+  private gripCallback: Callback<motion.OperatingHandStatus> = (data: motion.OperatingHandStatus): void => {
+    if (data === motion.OperatingHandStatus.LEFT_HAND_OPERATED) {
+      this.applyGripSide('left');
+    } else if (data === motion.OperatingHandStatus.RIGHT_HAND_OPERATED) {
+      this.applyGripSide('right');
+    }
+  };
+  private dragStartX: number = 0;
+  private dragStartY: number = 0;
+
   aboutToAppear(): void {
+    const s: string | undefined = AppStorage.get('fabMarkSide') as string | undefined;
+    if (s === 'left' || s === 'right') this.fabSide = s;
+    this.initGripSensing();   // 智感握姿：订阅系统操作手状态，自动识别左右手
     this.load();
+  }
+
+  aboutToDisappear(): void {
+    if (this.gripAvailable) {
+      try {
+        motion.off('operatingHandChanged', this.gripCallback);
+      } catch (err) {
+        const error = err as BusinessError;
+        console.warn('Failed off operatingHandChanged, code=' + error.code);
+      }
+    }
+  }
+
+  // 智感握姿：先用 getRecentOperatingHandStatus 取当前操作手，再订阅 operatingHandChanged。
+  // 设备不支持(801)或权限不足(201)时退化为触摸位置启发式（senseSide）。
+  private initGripSensing(): void {
+    try {
+      const recent: motion.OperatingHandStatus = motion.getRecentOperatingHandStatus();
+      if (recent === motion.OperatingHandStatus.LEFT_HAND_OPERATED) {
+        this.fabSide = 'left';
+        AppStorage.set('fabMarkSide', 'left');
+      } else if (recent === motion.OperatingHandStatus.RIGHT_HAND_OPERATED) {
+        this.fabSide = 'right';
+        AppStorage.set('fabMarkSide', 'right');
+      }
+      motion.on('operatingHandChanged', this.gripCallback);
+      this.gripAvailable = true;
+      console.info('Grip sensing (operatingHandChanged) enabled');
+    } catch (err) {
+      const error = err as BusinessError;
+      console.warn('Grip sensing unavailable, code=' + error.code);
+      this.gripAvailable = false;
+    }
+  }
+
+  // 应用系统识别到的握姿（左/右手），平滑把按钮换到对应侧
+  private applyGripSide(side: string): void {
+    if (this.dragging || this.showMenu) return;
+    if (side === this.fabSide) return;
+    this.fabSide = side;
+    AppStorage.set('fabMarkSide', side);
+    this.fabAnimating = true;
+    this.fabX = side === 'right'
+      ? (this.stackW - this.FAB_SIZE - this.FAB_MARGIN)
+      : this.FAB_MARGIN;
   }
 
   // 兜底：Navigation 复用 NavDestination 实例时，onPageShow 仍会随显示触发，
@@ -76,99 +146,119 @@ export struct Detail {
     }
   }
 
-  // 移除一个用户标签（点击当前标签）
-  private async removeUserTag(t: string): Promise<void> {
-    this.userTags = await UserTagStore.removeTag(this.itemId, t);
-  }
-
-  // 添加自定义标签
-  private async addCustomTag(): Promise<void> {
-    const t: string = this.customInput.trim();
-    if (!t) return;
-    this.userTags = await UserTagStore.addTag(this.itemId, t);
-    this.customInput = '';
-  }
-
-  // 我的标记管理区：当前标签(点按移除) + 预设快捷 + 自定义输入（卡片化）
-  @Builder userTagSection() {
+  // 悬浮「我的标记」主按钮（无子菜单，菜单已提至根层避免裁切）
+  @Builder fabButton() {
     Column() {
-      SectionTitle({ title: '我的标记' })
-
-      // 已添加的标签：点击移除
-      if (this.userTags.length > 0) {
-        Flex({ wrap: FlexWrap.Wrap }) {
-          ForEach(this.userTags, (t: string) => {
-            Row() {
-              Text(t)
-                .fontSize(FONT.caption)
-                .fontColor($r('app.color.on_primary'))
-              Text('✕')
-                .fontSize(FONT.caption)
-                .fontColor($r('app.color.on_primary'))
-                .margin({ left: 4 })
-            }
-            .padding({ left: SPACE.sm, right: SPACE.sm, top: SPACE.xs, bottom: SPACE.xs })
-            .backgroundColor($r('app.color.brand'))
-            .borderRadius(RADIUS.sm)
-            .margin({ top: SPACE.xs, right: SPACE.xs })
-            .onClick(() => this.removeUserTag(t))
-          }, (t: string) => t)
-        }
-        .width('100%')
-        .margin({ bottom: SPACE.xs })
-      } else {
-        Text('尚未标记，点击下方快速添加')
-          .fontSize(FONT.caption)
-          .fontColor($r('app.color.text_tertiary'))
-          .alignSelf(ItemAlign.Start)
-          .margin({ bottom: SPACE.xs })
-      }
-
-      // 预设快捷标签：点击切换
-      Flex({ wrap: FlexWrap.Wrap }) {
-        ForEach(PRESET_TAGS, (p: string) => {
-          TagChip({ text: p, selected: this.userTags.includes(p), onTap: () => { this.togglePreset(p); } })
-            .margin({ top: SPACE.xs, right: SPACE.xs })
-        }, (p: string) => p)
-      }
-      .width('100%')
-      .margin({ bottom: SPACE.sm })
-
-      // 自定义标签输入
-      Row() {
-        TextInput({ placeholder: '自定义标签，如：必考', text: this.customInput })
-          .layoutWeight(1)
-          .height(36)
-          .backgroundColor($r('app.color.surface'))
-          .borderRadius(RADIUS.pill)
-          .padding({ left: SPACE.md })
-          .onChange((v: string) => { this.customInput = v; })
-        Button('添加')
-          .height(36)
-          .margin({ left: SPACE.sm })
-          .backgroundColor($r('app.color.brand'))
+      Stack({ alignContent: Alignment.Center }) {
+        // 同一字形：默认 '+'，展开时旋转 45° 变为 '×'（大小一致，带旋转动画）
+        Text('+')
+          .fontSize(26)
           .fontColor($r('app.color.on_primary'))
-          .borderRadius(RADIUS.pill)
-          .onClick(() => this.addCustomTag())
+          .rotate({ angle: this.showMenu ? 45 : 0 })
+          .animation({ duration: 200, curve: Curve.EaseOut })
+        if (!this.showMenu && this.userTags.length > 0) {
+          Text(`${this.userTags.length}`)
+            .fontSize(11)
+            .fontColor($r('app.color.on_primary'))
+            .backgroundColor($r('app.color.accent'))
+            .borderRadius(10)
+            .padding({ left: 5, right: 5 })
+            .position({ x: 30, y: -4 })
+        }
       }
-      .width('100%')
-      .margin({ bottom: SPACE.md })
+      .width(this.FAB_SIZE)
+      .height(this.FAB_SIZE)
     }
-    .width('100%')
-    .padding(SPACE.lg)
-    .backgroundColor($r('app.color.surface'))
-    .borderRadius(RADIUS.lg)
-    .shadow({ radius: 10, color: $r('app.color.card_stroke'), offsetY: 2 })
-    .alignItems(HorizontalAlign.Start)
+    .width(this.FAB_SIZE)
+    .height(this.FAB_SIZE)
+    .backgroundColor($r('app.color.brand'))
+    .borderRadius(this.FAB_SIZE / 2)
+    .shadow({ radius: 12, color: $r('app.color.card_stroke'), offsetY: 3 })
+    .scale({ x: this.showMenu ? 1.12 : 1, y: this.showMenu ? 1.12 : 1 })
+    .animation({ duration: 200, curve: Curve.EaseOut })
+    .position({ x: this.fabX, y: this.fabY })
+    .animation(this.fabAnimating ? { duration: 200, curve: Curve.EaseOut } : { duration: 0 })
+    // 点击直接展开/收起菜单（不再依赖拖拽位移判断，避免灵敏度问题）
+    .onClick(() => {
+      this.showMenu = !this.showMenu;
+    })
+    // 拖拽手势：距离阈值抬高，不与点击冲突；拖拽时自动收起菜单
+    .gesture(
+      PanGesture({ distance: 10 })
+        .onActionStart(() => {
+          this.showMenu = false;
+          this.dragging = true;
+          this.fabAnimating = false;
+          this.dragStartX = this.fabX;
+          this.dragStartY = this.fabY;
+        })
+        .onActionUpdate((e: GestureEvent) => {
+          const leftBound: number = this.FAB_MARGIN;
+          const rightBound: number = this.stackW - this.FAB_SIZE - this.FAB_MARGIN;
+          const topBound: number = this.safeTop + this.FAB_MARGIN;
+          const bottomBound: number = this.stackH - this.FAB_SIZE - this.safeBottom - this.FAB_MARGIN;
+          this.fabX = this.clamp(this.dragStartX + e.offsetX, leftBound, rightBound);
+          this.fabY = this.clamp(this.dragStartY + e.offsetY, topBound, bottomBound);
+        })
+        .onActionEnd(() => {
+          this.dragging = false;
+          this.snapToEdge();
+        })
+    )
+  }
+
+  // 将悬浮按钮吸附到最近的水平边缘（左/右），并记忆偏好（左/右手）
+  private snapToEdge(): void {
+    const leftBound: number = this.FAB_MARGIN;
+    const rightBound: number = this.stackW - this.FAB_SIZE - this.FAB_MARGIN;
+    if (this.fabX + this.FAB_SIZE / 2 < this.stackW / 2) {
+      this.fabSide = 'left';
+      this.fabX = leftBound;
+    } else {
+      this.fabSide = 'right';
+      this.fabX = rightBound;
+    }
+    AppStorage.set('fabMarkSide', this.fabSide);
+  }
+
+  // 兜底：设备不支持「智感握姿」时，仍按内容区触摸位置识别左右手
+  private senseSide(x: number): void {
+    if (this.gripAvailable) return;   // 有系统握姿识别则不再用启发式
+    if (this.dragging || this.showMenu) return;
+    const side: string = x > this.stackW / 2 ? 'right' : 'left';
+    if (side === this.fabSide) return;
+    this.fabSide = side;
+    AppStorage.set('fabMarkSide', side);
+    this.fabAnimating = true;
+    this.fabX = side === 'right'
+      ? (this.stackW - this.FAB_SIZE - this.FAB_MARGIN)
+      : this.FAB_MARGIN;
+  }
+
+  private clamp(v: number, min: number, max: number): number {
+    return Math.max(min, Math.min(max, v));
+  }
+
+  // 标签弹窗内的单个标签按钮：选中高亮，点击切换
+  @Builder tagButton(tag: string) {
+    Button(tag)
+      .fontSize(13)
+      .fontColor(this.userTags.includes(tag) ? $r('app.color.on_primary') : $r('app.color.text_primary'))
+      .backgroundColor(this.userTags.includes(tag) ? $r('app.color.brand') : $r('app.color.surface'))
+      .border({ width: this.userTags.includes(tag) ? 0 : 1, color: $r('app.color.card_stroke') })
+      .borderRadius(18)
+      .height(36)
+      .padding({ left: 14, right: 14 })
+      .margin(4)
+      .onClick(() => { this.togglePreset(tag); })
   }
 
   @Builder articleView() {
     Scroll() {
       Column() {
-        HighlightText({ text: this.article!.title, kw: this.kw, fontSize: FONT.display, baseColor: $r('app.color.text_title'), baseWeight: FontWeight.Bold })
-          .margin({ bottom: SPACE.sm })
+        // 大标题已上移至顶部 BackHeader（过长省略），此处不再重复
         HighlightText({ text: this.article!.category, kw: this.kw, fontSize: FONT.caption, baseColor: $r('app.color.text_secondary'), baseWeight: FontWeight.Normal })
-          .margin({ bottom: SPACE.xs })
+          .margin({ bottom: SPACE.sm })
         // 标签行：全部展示，自动换行
         if (this.article!.tags !== undefined && this.article!.tags.length > 0) {
           Flex({ wrap: FlexWrap.Wrap }) {
@@ -196,8 +286,6 @@ export struct Detail {
           })
         }
         .margin({ bottom: SPACE.md })
-        // 我的标记（用户自定义标签，持久化）
-        this.userTagSection()
         ForEach(this.article!.sections, (s: Section) => {
           Column() {
             if (s.heading) {
@@ -212,7 +300,10 @@ export struct Detail {
       }
       .width('92%')
       .alignItems(HorizontalAlign.Start)
+      .justifyContent(FlexAlign.Start)
+      .constraintSize({ minHeight: '100%' })
     }
+    .contentStartOffset(0)
     .layoutWeight(1)
     .width('100%')
   }
@@ -258,8 +349,6 @@ export struct Detail {
           })
         }
         .margin({ bottom: SPACE.md })
-        // 我的标记（用户自定义标签，持久化）
-        this.userTagSection()
         SectionTitle({ title: '题目' })
           .margin({ top: SPACE.sm, bottom: SPACE.xs })
         HighlightText({ text: this.question!.prompt, kw: this.kw, fontSize: FONT.bodySm, baseColor: $r('app.color.text_body'), baseWeight: FontWeight.Normal })
@@ -293,6 +382,8 @@ export struct Detail {
       }
       .width('92%')
       .alignItems(HorizontalAlign.Start)
+      .justifyContent(FlexAlign.Start)
+      .constraintSize({ minHeight: '100%' })
     }
     .layoutWeight(1)
     .width('100%')
@@ -303,33 +394,101 @@ export struct Detail {
 
   build() {
     // 朗读改用系统朗读控件 TextReader（自带悬浮播控面板），页面内不再自绘悬浮按钮
-    Column() {
-      BackHeader({
-        title: this.kind === 'article' ? '知识点' : '真题详情',
-        showAction: true
-      }) {
-        Text(this.fav ? '★' : '☆')
-          .fontSize(FONT.title)
-          .fontColor(this.fav ? $r('app.color.favorite') : $r('app.color.text_tertiary'))
-          .onClick(() => this.toggleFav())
+    Stack({ alignContent: Alignment.TopStart }) {
+      // 主内容（头部 + 可滚动详情）
+      Column() {
+        // 用 Column 包裹 BackHeader，避免 @BuilderParam 组件无法直挂 margin
+        Column() {
+          BackHeader({
+            title: this.kind === 'article' ? (this.article?.title ?? '知识点') : '真题详情',
+            showAction: true
+          }) {
+            Text(this.fav ? '★' : '☆')
+              .fontSize(FONT.title)
+              .fontColor(this.fav ? $r('app.color.favorite') : $r('app.color.text_tertiary'))
+              .onClick(() => this.toggleFav())
+          }
+        }
+        .margin({ top: this.safeTop })
+        .width('100%')
+
+        if (this.article) {
+          this.articleView()
+        } else if (this.question) {
+          this.questionView()
+        } else {
+          Text('加载中…')
+            .fontSize(FONT.bodySm)
+            .fontColor($r('app.color.text_secondary'))
+            .margin(SPACE.xl)
+        }
+      }
+      .width('100%')
+      .height('100%')
+      .backgroundColor($r('app.color.background'))
+      .expandSafeArea(SAFE_AREA_TYPES, SAFE_AREA_EDGES)
+      .justifyContent(FlexAlign.Start)
+      // 顶部安全区已上移到 BackHeader 外层 Column 的 margin(top)，这里只保留底部内边距
+      .padding({ bottom: this.safeBottom })
+      // 内容区触摸：识别左右手（按按下点 x 落在屏幕哪一侧）
+      .onTouch((e: TouchEvent) => {
+        if (e.type === TouchType.Down) {
+          this.senseSide(e.touches[0].x);
+        }
+      })
+
+      // 展开子菜单时的遮罩：点击空白处收起（必须在波轮圆钮下方渲染，
+      // 否则透明遮罩会拦截圆钮的点击、并且遮在圆钮之上使其“点不中、看着像显示不出”）
+      if (this.showMenu) {
+        Column()
+          .width('100%')
+          .height('100%')
+          .backgroundColor($r('app.color.transparent'))
+          .onClick(() => { this.showMenu = false; })
       }
 
-      if (this.article) {
-        this.articleView()
-      } else if (this.question) {
-        this.questionView()
-      } else {
-        Text('加载中…')
-          .fontSize(FONT.bodySm)
-          .fontColor($r('app.color.text_secondary'))
-          .margin(SPACE.xl)
+      // 标签弹窗：悬浮按钮上方的圆角卡片（上方优先，空间不够则弹到下方）
+      if (this.showMenu) {
+        Column() {
+          Flex({ wrap: FlexWrap.Wrap, justifyContent: FlexAlign.Center }) {
+            ForEach(PRESET_MARK_TAGS, (tag: string) => {
+              this.tagButton(tag)
+            }, (tag: string) => tag)
+          }
+          .width('100%')
+        }
+        .width(240)
+        .padding(10)
+        .backgroundColor($r('app.color.surface'))
+        .borderRadius(16)
+        .shadow({ radius: 16, color: '#1A000000', offsetY: 4 })
+        .position({
+          x: this.clamp(this.fabX + this.FAB_SIZE / 2 - 120, 8, this.stackW - 248),
+          y: this.fabY > 180 ? this.fabY - 160 : this.fabY + this.FAB_SIZE + 12
+        })
+        .transition(TransitionEffect.scale({ x: 0.8, y: 0.8 })
+          .combine(TransitionEffect.OPACITY)
+          .animation({ duration: 200, curve: Curve.EaseOut }))
       }
+
+      // 悬浮「我的标记」主按钮（点击展开、拖拽移动、智感握姿自动换边）
+      this.fabButton()
     }
     .width('100%')
     .height('100%')
-    .backgroundColor($r('app.color.background'))
     .expandSafeArea(SAFE_AREA_TYPES, SAFE_AREA_EDGES)
-    .padding({ top: this.safeTop, bottom: this.safeBottom })
+    .onAreaChange((_old: Area, nw: Area) => {
+      this.stackW = nw.width as number;
+      this.stackH = nw.height as number;
+      // 首次拿到容器尺寸时按左右手偏好放置到对应底角
+      if (!this.fabInit && this.stackW > 0 && this.stackH > 0) {
+        this.fabInit = true;
+        this.fabY = this.stackH - this.FAB_SIZE - this.safeBottom - this.FAB_MARGIN;
+        this.fabX = this.fabSide === 'right'
+          ? (this.stackW - this.FAB_SIZE - this.FAB_MARGIN)
+          : this.FAB_MARGIN;
+      }
+    })
   }
 }
 

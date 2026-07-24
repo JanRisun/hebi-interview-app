@@ -37,6 +37,22 @@
         "name": "ohos.permission.INTERNET"
       },
       {
+        "name": "ohos.permission.ACTIVITY_MOTION",
+        "reason": "$string:motion_reason",
+        "usedScene": {
+          "abilities": ["EntryAbility"],
+          "when": "inuse"
+        }
+      },
+      {
+        "name": "ohos.permission.DETECT_GESTURE",
+        "reason": "$string:motion_reason",
+        "usedScene": {
+          "abilities": ["EntryAbility"],
+          "when": "inuse"
+        }
+      },
+      {
         "name": "ohos.permission.GET_NETWORK_INFO"
       },
       {

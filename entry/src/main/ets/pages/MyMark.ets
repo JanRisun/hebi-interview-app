@@ -3,7 +3,7 @@
 import { common } from '@kit.AbilityKit';
 import { DataStore } from '../model/DataStore';
 import { AppData, Article, Question } from '../model/Types';
-import { UserTagStore } from '../utils/UserTagStore';
+import { UserTagStore, PRESET_MARK_TAGS } from '../utils/UserTagStore';
 import { FONT, RADIUS, SPACE, SAFE_AREA_TYPES, SAFE_AREA_EDGES } from '../utils/Theme';
 import { BackHeader } from '../utils/BackHeader';
 import { IconTile, EmptyState, HighlightText } from '../utils/Ui';
@@ -27,8 +27,8 @@ export struct MyMarkView {
   @State activeTab: number = 0;    // 当前标签 Tab 索引（0=全部）
   @Consume pageStack: NavPathStack;
 
-  // 预设标签数组：二级页按这些标签分页展示
-  private readonly presetTags: string[] = ['常考', '重点', '难点', '易错', '已掌握', '稍后再看'];
+  // 预设标签数组：二级页按这些标签分页展示（与个人中心「我的标记」、详情页悬浮按钮共用）
+  private readonly presetTags: string[] = PRESET_MARK_TAGS;
 
   // 订阅全局收藏/标签版本号：详情页加标签后自动重读，无需重启 app
   @StorageLink('favTagVersion') @Watch('onDataChange') tagVersion: number = 0;
