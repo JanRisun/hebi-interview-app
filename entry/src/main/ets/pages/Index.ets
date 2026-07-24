@@ -23,6 +23,7 @@ import { StudyRecord } from './StudyRecord';
 import { ExamRecord } from './ExamRecord';
 import { StudyPlan } from './StudyPlan';
 import { AudioAnswerView } from './AudioAnswer';
+import { AudioReviewView } from './AudioReview';
 import { VideoAnswerView } from './VideoAnswer';
 import { VideoReviewView } from './VideoReview';
 import { FONT, SPACE, SAFE_AREA_TYPES, SAFE_AREA_EDGES } from '../utils/Theme';
@@ -409,6 +410,16 @@ struct Index {
       }.hideTitleBar(true)
       .onAppear(() => {
         applyStatusBar('brand');
+      })
+      .onDisAppear(() => {
+        applyStatusBar('brand');
+      })
+    } else if (name === 'AudioReview') {
+      NavDestination() {
+        AudioReviewView({ params: param })
+      }.hideTitleBar(true)
+      .onAppear(() => {
+        applyStatusBar('theme');
       })
       .onDisAppear(() => {
         applyStatusBar('brand');
