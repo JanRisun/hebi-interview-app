@@ -5,6 +5,7 @@ import { DataStore } from '../model/DataStore';
 import { AnswerRecord, Question } from '../model/Types';
 import { FONT, RADIUS, SPACE, SAFE_AREA_TYPES, SAFE_AREA_EDGES } from '../utils/Theme';
 import { BackHeader } from '../utils/BackHeader';
+import { AsrHelper } from '../utils/AsrHelper';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { media } from '@kit.MediaKit';
@@ -33,6 +34,10 @@ export struct AudioReviewView {
   @State record: AnswerRecord | null = null;             // 答题记录（思考时长 + 作答时长 + 音频路径）
   @State thinkSec: number = 0;                           // 思考时长（秒），从记录提取以保证响应式刷新
   @State speakSec: number = 0;                           // 作答时长（秒），从记录提取以保证响应式刷新
+  @State transcriptText: string = '';                   // 语音转文字结果
+  @State hasTranscript: boolean = false;                 // 是否存在转写文本
+  @State transcribing: boolean = false;                  // 是否正在端侧生成转写（最佳努力）
+  @State showTranscriptSheet: boolean = false;           // 「查看更多」弹层是否展开
   @State activeTab: number = 0;                          // 当前高亮的 tab
   @State sectionOffsets: number[] = [0, 0, 0, 0, 0, 0];  // 6 个小节相对 Scroll 内部的 yOffset
 
@@ -77,6 +82,7 @@ export struct AudioReviewView {
       if (p.audioPath) {
         this.initPlayback(p.audioPath);
       }
+      this.loadTranscript(p.id, ctx);
       return;
     }
 
@@ -96,6 +102,44 @@ export struct AudioReviewView {
     } catch (e) {
       const err = e as BusinessError;
       hilog.error(DOMAIN, TAG, 'load record fail: %{public}s', err.message);
+    }
+    this.loadTranscript(p.id, ctx);
+  }
+
+  // 加载语音转文字：优先读取作答页已落盘的 rec_<id>.txt；不存在时对录音做一次端侧 ASR（最佳努力，需设备预置中文模型）
+  private async loadTranscript(id: string, ctx: common.UIAbilityContext): Promise<void> {
+    const path: string = ctx.filesDir + '/rec_' + id + '.txt';
+    let text: string = '';
+    try {
+      text = fileIo.readTextSync(path);
+    } catch (e) {
+      // 无转写文件，忽略
+    }
+    if (text && text.length > 0) {
+      this.transcriptText = text;
+      this.hasTranscript = true;
+      return;
+    }
+    // 文件不存在 → 最佳努力：对录音做一次端侧语音转写
+    if (this.record && this.record.audioPath) {
+      this.transcribing = true;
+      try {
+        const result: string = await AsrHelper.transcribeFile(this.record.audioPath);
+        if (result && result.length > 0) {
+          this.transcriptText = result;
+          this.hasTranscript = true;
+          try {
+            const fd = fileIo.openSync(path, fileIo.OpenMode.READ_WRITE | fileIo.OpenMode.CREATE | fileIo.OpenMode.TRUNC);
+            fileIo.writeSync(fd.fd, result);
+            fileIo.closeSync(fd.fd);
+          } catch (e) { /* ignore */ }
+        }
+      } catch (e) {
+        const msg: string = (e as BusinessError)?.message || (e as Error)?.message || '未知错误';
+        hilog.error(DOMAIN, TAG, 'lazy transcribe fail: %{public}s', msg);
+      } finally {
+        this.transcribing = false;
+      }
     }
   }
 
@@ -294,6 +338,46 @@ export struct AudioReviewView {
     .backgroundColor($r('app.color.background'))
     .padding({ top: this.safeTop })
     .expandSafeArea(SAFE_AREA_TYPES, SAFE_AREA_EDGES)
+    // 「查看更多」转写弹层（底部抽屉，展示完整语音转文字结果）
+    .bindSheet($$this.showTranscriptSheet, this.transcriptSheet, {
+      height: '70%',
+      dragBar: true,
+      backgroundColor: $r('app.color.surface')
+    })
+  }
+
+  // 「查看更多」弹层内容：完整转写文字（可滚动）
+  @Builder transcriptSheet() {
+    Column() {
+      Row() {
+        Text('语音转文字')
+          .fontSize(FONT.title)
+          .fontWeight(FontWeight.Bold)
+          .fontColor($r('app.color.text_title'))
+        Blank()
+        Text('✕')
+          .fontSize(20)
+          .fontColor($r('app.color.text_secondary'))
+          .onClick(() => {
+            this.showTranscriptSheet = false;
+          })
+      }
+      .width('100%')
+      .margin({ bottom: SPACE.md })
+
+      Scroll() {
+        Text(this.transcriptText)
+          .fontSize(FONT.body)
+          .fontColor($r('app.color.text_body'))
+          .lineHeight(22)
+          .width('100%')
+      }
+      .layoutWeight(1)
+      .width('100%')
+    }
+    .width('100%')
+    .height('100%')
+    .padding({ left: SPACE.lg, right: SPACE.lg, top: SPACE.lg, bottom: SPACE.lg + this.safeBottom })
   }
 
   // ---- 顶部 Tab 栏（横向滚动 + 选中高亮 + 品牌色下划线） ----
@@ -402,6 +486,50 @@ export struct AudioReviewView {
           .fontSize(FONT.body)
           .fontColor($r('app.color.text_secondary'))
           .margin({ top: SPACE.xs })
+      }
+
+      // 语音转文字：最多两行 + 查看更多弹层
+      if (this.hasTranscript) {
+        Column() {
+          Text('语音转文字')
+            .fontSize(FONT.caption)
+            .fontColor($r('app.color.text_secondary'))
+            .alignSelf(ItemAlign.Start)
+            .margin({ bottom: 4 })
+          Text(this.transcriptText)
+            .fontSize(FONT.body)
+            .fontColor($r('app.color.text_body'))
+            .lineHeight(22)
+            .maxLines(2)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+            .width('100%')
+          Row() {
+            Text('查看更多')
+              .fontSize(FONT.bodySm)
+              .fontColor($r('app.color.brand'))
+            Text('›')
+              .fontSize(FONT.bodySm)
+              .fontColor($r('app.color.brand'))
+              .margin({ left: 2 })
+          }
+          .margin({ top: SPACE.xs })
+          .alignSelf(ItemAlign.End)
+          .onClick(() => {
+            this.showTranscriptSheet = true;
+          })
+        }
+        .width('100%')
+        .margin({ top: SPACE.sm })
+      } else if (this.transcribing) {
+        Text('转写生成中…')
+          .fontSize(FONT.caption)
+          .fontColor($r('app.color.text_secondary'))
+          .margin({ top: SPACE.sm })
+      } else {
+        Text('暂无转写文字')
+          .fontSize(FONT.caption)
+          .fontColor($r('app.color.text_secondary'))
+          .margin({ top: SPACE.sm })
       }
     }
     .width('92%')
