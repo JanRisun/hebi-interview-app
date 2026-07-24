@@ -7,6 +7,7 @@
     { "name": "vibrate_reason", "value": "模考分段计时到点（思考结束、作答超时）振动提醒考生" },
     { "name": "remind_reason", "value": "用于每日定时推送备考提醒通知" },
     { "name": "bg_running_reason", "value": "语音朗读进行中保持后台运行，避免切到后台时朗读被打断" },
-    { "name": "motion_reason", "value": "用于智感握姿识别左右手，让标记按钮自动跟随握持手换边" }
+    { "name": "motion_reason", "value": "用于智感握姿识别左右手，让标记按钮自动跟随握持手换边" },
+    { "name": "camera_reason", "value": "用于视频作答时录制答题过程，本机存储，不上传" }
   ]
 }

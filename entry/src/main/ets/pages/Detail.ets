@@ -15,6 +15,7 @@ import { promptAction } from '@kit.ArkUI';
 // 路由参数类型（规避 arkts-no-untyped-obj-literals）
 interface DetailParam { id: string; kind: string; kw?: string }
 interface AudioAnswerParam { id: string }
+interface VideoAnswerParam { id: string }
 
 @Component
 export struct Detail {
@@ -624,8 +625,11 @@ export struct Detail {
           .backgroundColor('#FFF8E5')
           .onClick(() => {
             this.showStartDialog = false;
-            // 视频作答暂未实现，后续接入相机/录制能力
-            promptAction.showToast({ message: '视频作答开发中，敬请期待', duration: 1500 });
+            // 跳转到视频作答页：仅当是真题且已加载
+            if (this.question) {
+              const p: VideoAnswerParam = { id: this.question.id };
+              this.pageStack.pushPathByName('VideoAnswer', p);
+            }
           })
         }
         .width('100%')
