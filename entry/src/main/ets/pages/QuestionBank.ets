@@ -229,7 +229,7 @@ export struct QuestionBankView {
     .backgroundColor($r('app.color.background'))
     .expandSafeArea(SAFE_AREA_TYPES, SAFE_AREA_EDGES)
     // 主 Tab（root=true）底部叠加 100vp 悬浮 Tab 栏空间（56 栏高 + 8 顶gap + 28 底gap + 自身 safeBottom），
-    // 避免列表最后一项被悬浮 Tab 栏遮挡；二级页（root=false，无悬浮栏）只留系统 safeBottom。
-    .padding({ top: this.safeTop, bottom: (this.root ? 100 : 0) + this.safeBottom })
+    // 首页 Tab（root=true）内容区位于官方系统 Tab 栏上方；二级页（root=false）为整屏子页；两者底部均只留系统 safeBottom。
+    .padding({ top: this.safeTop, bottom: this.safeBottom })
   }
 }

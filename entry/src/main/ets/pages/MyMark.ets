@@ -254,6 +254,7 @@ export struct MyMarkView {
     .height('100%')
     .backgroundColor($r('app.color.background'))
     .expandSafeArea(SAFE_AREA_TYPES, SAFE_AREA_EDGES)
+    // 我的标记是整屏 NavDestination，进入后首页悬浮 Tab 栏已隐藏，底部只留系统安全区
     .padding({ top: this.safeTop, bottom: this.safeBottom })
   }
 }

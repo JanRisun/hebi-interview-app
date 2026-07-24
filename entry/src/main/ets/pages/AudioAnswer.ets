@@ -915,6 +915,7 @@ export struct AudioAnswerView {
       ]
     })
     .expandSafeArea(SAFE_AREA_TYPES, SAFE_AREA_EDGES)
+    // 音频作答是整屏 NavDestination，进入后首页悬浮 Tab 栏已隐藏，底部只留系统安全区
     .padding({ top: this.safeTop, bottom: this.safeBottom })
   }
 }

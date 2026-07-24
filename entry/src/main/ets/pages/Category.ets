@@ -227,7 +227,7 @@ export struct CategoryView {
     .height('100%')
     .backgroundColor($r('app.color.background'))
     .expandSafeArea(SAFE_AREA_TYPES, SAFE_AREA_EDGES)
-    .padding({ top: this.safeTop, bottom: 100 + this.safeBottom })
+    .padding({ top: this.safeTop, bottom: this.safeBottom })
   }
 }
 

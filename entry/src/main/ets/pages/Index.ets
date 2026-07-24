@@ -1,10 +1,13 @@
-// 底部 4 Tab 主框架：知识库 / 速记卡 / 题库 / 个人中心
-// 根容器用 Stack 包裹 4 Tab 内容 + 悬浮自定义底部导航栏；
-// 自定义导航栏采用「白底胶囊 + 阴影 + 圆角」HMOS 代码工坊风格，左右各留 4% 外边距。
-// Tab 栏悬浮在 Tabs 内容之上，4 个内容页 Scroll 底部应预留约 88vp 空间，
-// 避免列表最后一行被 Tab 栏遮挡（各页面自行在 Scroll/Column 上 padding bottom）。
-// 语音悬浮播控按钮不放在主框架（列表页默认不显示），
-// 由各具体页面（详情页 / 速记卡页）按需自行叠加。
+// 主框架：知识库 / 速记卡 / 题库 / 个人中心
+// 底部导航栏参考 HarmonyOS_Samples/SmartReach 的「智感握持」思路：
+//   - 悬浮式胶囊底栏（Swiper + 自定义浮层，圆角 + 阴影 + 底部浮起）
+//   - 通过 @kit.MultimodalAwarenessKit 的 motion 感知 API 检测握持手（API 20+ 可用），
+//     左手握持时底栏左移、右手握持时右移，靠近持机手拇指（智感握持跟手），
+//     仅折叠屏设备（deviceType === 'foldable'）启用；普通直板手机固定居中，不做偏移
+//     （折叠屏单手够不到对侧，跟手更实用；非折叠屏无需申请权限、保持居中更稳妥）
+//   - 选中项由官方 Particle 组件触发爆裂粒子特效 + springCurve 图标回弹（已验证可编译）
+// 子页（Detail / Knowledge / Favorites 等）由 Navigation 的 pageStack 推入，
+// 推入后首页（含悬浮 Tab 栏）被隐藏，因此子页无需为 Tab 栏预留额外高度。
 // SymbolGlyph 是 ArkUI 内置组件（同 Text/Image/Column），无需从 kit 导入
 import { CategoryView } from './Category';
 import { FlashcardView } from './Flashcard';
@@ -22,20 +25,66 @@ import { StudyPlan } from './StudyPlan';
 import { AudioAnswerView } from './AudioAnswer';
 import { FONT, SPACE, SAFE_AREA_TYPES, SAFE_AREA_EDGES } from '../utils/Theme';
 import { applyStatusBar } from '../utils/StatusBar';
+import { curves } from '@kit.ArkUI';
+import { motion } from '@kit.MultimodalAwarenessKit';
+import { abilityAccessCtrl } from '@kit.AbilityKit';
+import deviceInfo from '@ohos.deviceInfo';
 
-// 自定义悬浮底部 Tab 栏固定高度 + 上下间距
-// 4 个内容页 Scroll 底部应预留此高度（外加自身 safeBottom）作为底部留白
-const TAB_BAR_HEIGHT: number = 56;
-const TAB_BAR_TOP_GAP: number = 8;    // Tabs 内容与 Tab 栏顶部之间的间距
-const TAB_BAR_BOTTOM_GAP: number = 28; // Tab 栏与屏幕底部的间距（不含安全区，避开手势操作条）
+// 弹簧曲线（选中回弹反馈）
+const SPRING_CURVE = curves.springCurve(0, 1, 228, 30);
+
+// 悬浮底栏参数：底部浮起边距 + 栏自身高度 = 主 Tab 内容需预留的底部空间，避免被悬浮栏遮挡
+const BAR_BOTTOM_MARGIN: number = 14;
+const FLOATING_BAR_HEIGHT: number = 60;
+// 底栏宽度用百分比自适应：在窄屏自动留出左右边距，避免贴边导致文字被裁切（不再固定 vp 宽度）
+const FLOATING_BAR_WIDTH: string = '88%';
+const FLOATING_RESERVE: number = BAR_BOTTOM_MARGIN + FLOATING_BAR_HEIGHT;
+
+// 智感握持跟手：底栏水平偏移量（vp，仅折叠屏生效）。左手握持偏左、右手握持偏右、其它居中。
+const GRIP_OFFSET: number = 24;
+
+// 仅折叠屏设备启用智感握持跟手：折叠屏单手够不到对侧，跟手偏移更实用；
+// 普通直板手机固定居中（deviceType 为 'phone'），不申请权限、不开启监听。
+const IS_FOLDABLE: boolean = deviceInfo.deviceType === 'foldable';
+
+// 选中 Tab 粒子爆裂特效总开关（暂时关闭；true 可恢复）。false 时连 Particle 组件都不渲染。
+const PARTICLE_ENABLED: boolean = false;
 
 @Entry
 @Component
 struct Index {
   @State current: number = 0;
   @Provide pageStack: NavPathStack = new NavPathStack();
-  // Tabs 控制器：自定义 Tab 栏点击时主动驱动 Tabs 切换
-  private tabsController: TabsController = new TabsController();
+  // 智感握持：底栏水平偏移（由 motion 感知握持手驱动）
+  @State gripOffsetX: number = 0;
+
+  // 每个 Tab 项对应的粒子发射器属性（emitRate 动态控制是否爆裂）
+  @State emitters: EmitterProperty[][] = [
+    [{ index: 0, emitRate: 0, position: { x: 30, y: 30 }, size: { width: 60, height: 60 } }],
+    [{ index: 0, emitRate: 0, position: { x: 30, y: 30 }, size: { width: 60, height: 60 } }],
+    [{ index: 0, emitRate: 0, position: { x: 30, y: 30 }, size: { width: 60, height: 60 } }],
+    [{ index: 0, emitRate: 0, position: { x: 30, y: 30 }, size: { width: 60, height: 60 } }]
+  ];
+
+  private readonly tabIcons: Resource[] = [
+    $r('sys.symbol.book'),
+    $r('sys.symbol.bookmark'),
+    $r('sys.symbol.checkmark_circle'),
+    $r('sys.symbol.person')
+  ];
+  private readonly tabLabels: string[] = ['知识库', '速记卡', '题库', '个人中心'];
+
+  // 握持手感知回调（保存引用以便 off 注销）；status 为 motion.HoldingHandStatus 枚举值
+  private gripCallback: (status: number) => void = (status: number) => {
+    if (status === motion.HoldingHandStatus.LEFT_HAND_HELD ||
+        status === motion.HoldingHandStatus.BOTH_HANDS_HELD) {
+      this.gripOffsetX = -GRIP_OFFSET; // 左手/双手：底栏左移，靠近左手拇指
+    } else if (status === motion.HoldingHandStatus.RIGHT_HAND_HELD) {
+      this.gripOffsetX = GRIP_OFFSET;  // 右手：底栏右移
+    } else {
+      this.gripOffsetX = 0;            // 未识别/放桌面：居中
+    }
+  };
 
   // 通知/深链启动：若来自今日提醒(target=today)，自动直达备考计划页
   aboutToAppear(): void {
@@ -50,30 +99,178 @@ struct Index {
         this.pageStack.pushPathByName('StudyPlan', {} as Record<string, Object>);
       }, 0);
     }
+    // 仅折叠屏设备启用智感握持跟手；普通手机固定居中，不申请权限、不开启监听
+    if (IS_FOLDABLE) {
+      this.requestGripPermission();
+    }
   }
 
-  // 自定义底部 Tab 按钮（HMOS 代码工坊风格：白底胶囊悬浮、图标+文字上下、
-  // 选中态品牌蓝、未选中态深色 text_primary）
+  aboutToDisappear(): void {
+    // 注销监听，避免热重载叠加监听器
+    try {
+      motion.off('holdingHandChanged', this.gripCallback);
+    } catch (e) {
+      // 忽略
+    }
+  }
+
+  // 运行时申请 DETECT_GESTURE 权限；授权成功后开启握持监听
+  private requestGripPermission(): void {
+    const atManager = abilityAccessCtrl.createAtManager();
+    const ctx = getContext(this);
+    try {
+      atManager.requestPermissionsFromUser(ctx, ['ohos.permission.DETECT_GESTURE'])
+        .then((result) => {
+          if (result.authResults[0] === 0) {
+            this.startGripMonitoring();
+          }
+        })
+        .catch(() => {
+          // 用户拒授权或申请失败：底栏保持居中，不影响其它功能
+        });
+    } catch (e) {
+      // 上下文未就绪等异常：忽略，底栏保持居中
+    }
+  }
+
+  // 开启握持手感知（纯事件驱动，无需 start）；设备不支持时静默降级
+  private startGripMonitoring(): void {
+    try {
+      motion.on('holdingHandChanged', this.gripCallback);
+    } catch (e) {
+      // errCode 801 表示设备不支持该能力，保持居中即可
+      console.info('[Index] grip monitoring unavailable, fallback to centered bar');
+    }
+  }
+
+  // 触发某 Tab 的粒子爆裂：瞬时调高 emitRate，短暂停顿后归零
+  private burst(idx: number): void {
+    if (!PARTICLE_ENABLED) {
+      return;
+    }
+    const make = (rate: number): EmitterProperty[] => [
+      { index: 0, emitRate: rate, position: { x: 30, y: 30 }, size: { width: 60, height: 60 } }
+    ];
+    this.emitters[idx] = make(320);
+    this.emitters = [...this.emitters];
+    setTimeout(() => {
+      this.emitters[idx] = make(0);
+      this.emitters = [...this.emitters];
+    }, 170);
+  }
+
+  // 点击底栏项切换页面：直接更新 current，Swiper 的 .index(this.current) 随之切换并触发 onChange 爆裂
+  private switchTo(idx: number): void {
+    this.current = idx;
+  }
+
+  // 悬浮胶囊底栏的单个 Tab 项（图标 + 文字上下布局），选中高亮 + 图标回弹缩放
   @Builder tabBarItem(idx: number, icon: Resource, label: string) {
     Column() {
-      SymbolGlyph(icon)
-        .fontSize(22)
-        .fontColor([this.current === idx ? $r('app.color.brand') : $r('app.color.text_primary')])
+      Stack({ alignContent: Alignment.Center }) {
+        // 选中时的高亮胶囊底（品牌浅色）
+        if (this.current === idx) {
+          Column()
+            .width(38)
+            .height(38)
+            .backgroundColor($r('app.color.brand_light'))
+            .borderRadius(19)
+            .animation({ curve: SPRING_CURVE, duration: 260 })
+        }
+        // 图标：选中态品牌蓝 + 轻微回弹缩放反馈
+        SymbolGlyph(icon)
+          .fontSize(20)
+          .fontColor([this.current === idx ? $r('app.color.brand') : $r('app.color.text_primary')])
+          .scale({ x: this.current === idx ? 1.15 : 1.0, y: this.current === idx ? 1.15 : 1.0 })
+          .animation({ curve: SPRING_CURVE, duration: 260 })
+        // 粒子特效层：选中时由 burst() 触发爆裂（PARTICLE_ENABLED 关闭时不渲染）
+        if (PARTICLE_ENABLED) {
+          Particle({
+            particles: [
+              {
+                emitter: {
+                  particle: {
+                    type: ParticleType.POINT,
+                    config: { radius: 3 },
+                    count: 22,
+                    lifetime: 600,
+                    lifetimeRange: 120
+                  },
+                  emitRate: this.emitters[idx][0].emitRate,
+                  position: [30, 30],
+                  shape: ParticleEmitterShape.CIRCLE
+                },
+                color: {
+                  range: [0x2563EB, 0xF97316],
+                  updater: {
+                    type: ParticleUpdater.CURVE,
+                    config: [
+                      { from: 0x2563EB, to: 0xF97316, startMillis: 0, endMillis: 600, curve: Curve.EaseOut }
+                    ]
+                  }
+                },
+                opacity: {
+                  range: [1.0, 1.0],
+                  updater: {
+                    type: ParticleUpdater.CURVE,
+                    config: [{ from: 1.0, to: 0.0, startMillis: 0, endMillis: 600, curve: Curve.EaseOut }]
+                  }
+                },
+                scale: {
+                  range: [0.3, 0.7],
+                  updater: {
+                    type: ParticleUpdater.CURVE,
+                    config: [{ from: 0.3, to: 0.9, startMillis: 320, endMillis: 600, curve: Curve.EaseOut }]
+                  }
+                },
+                acceleration: {
+                  speed: { range: [30, 90], updater: { type: ParticleUpdater.RANDOM, config: [1, 100] } },
+                  angle: { range: [0, 360] }
+                }
+              }
+            ]
+          })
+            .width(60)
+            .height(60)
+            .emitter(this.emitters[idx])
+        }
+      }
+      .width(40)
+      .height(40)
+      .alignSelf(ItemAlign.Center)
+
       Text(label)
         .fontSize(FONT.mini)
         .fontWeight(this.current === idx ? FontWeight.Medium : FontWeight.Normal)
         .fontColor(this.current === idx ? $r('app.color.brand') : $r('app.color.text_primary'))
-        .margin({ top: SPACE.xs })
+        .maxLines(1)
+        .textAlign(TextAlign.Center)
+        .width('100%')
+        .margin({ top: 2 })
     }
     .layoutWeight(1)
     .height('100%')
     .justifyContent(FlexAlign.Center)
     .onClick(() => {
-      if (this.current !== idx) {
-        this.current = idx;
-        this.tabsController.changeIndex(idx);
-      }
+      this.switchTo(idx);
     })
+  }
+
+  // 悬浮胶囊底栏（叠加在内容上方，跟随握持手左右平移）
+  @Builder floatingTabBar() {
+    Row({ space: 0 }) {
+      ForEach([0, 1, 2, 3], (idx: number) => {
+        this.tabBarItem(idx, this.tabIcons[idx], this.tabLabels[idx]);
+      }, (idx: number) => idx.toString())
+    }
+    .width(FLOATING_BAR_WIDTH)
+    .height(FLOATING_BAR_HEIGHT)
+    .borderRadius(30)
+    .backgroundColor(Color.White)
+    .shadow({ radius: 16, color: 'rgba(0, 0, 0, 0.12)', offsetX: 0, offsetY: 4 })
+    .translate({ x: this.gripOffsetX })
+    .animation({ duration: 320, curve: Curve.EaseInOut })
+    .margin({ bottom: this.safeBottom + BAR_BOTTOM_MARGIN })
   }
 
   @StorageProp('safeTop') safeTop: number = 0;
@@ -166,7 +363,7 @@ struct Index {
       })
     } else if (name === 'QuestionBank') {
       NavDestination() {
-        QuestionBankView()
+        QuestionBankView({})
       }.hideTitleBar(true)
       .onAppear(() => {
         applyStatusBar('theme');
@@ -198,54 +395,41 @@ struct Index {
   }
 
   build() {
-    // 根容器：Navigation 路由根 + Stack(Tabs 内容 + 悬浮自定义 Tab 栏)
+    // 根容器：Navigation 路由根 + 悬浮底部导航栏（智感握持跟手）
     Navigation(this.pageStack) {
       Stack({ alignContent: Alignment.Bottom }) {
-        // 4 Tab 内容区（隐藏默认 tabBar，留出空间给下方悬浮 Tab 栏）
-        Tabs({ barPosition: BarPosition.End, controller: this.tabsController }) {
-          TabContent() { CategoryView() }.tabBar(this.tabBarItem(0, $r('sys.symbol.book'), '知识库'))
-          TabContent() { FlashcardView() }.tabBar(this.tabBarItem(1, $r('sys.symbol.bookmark'), '速记卡'))
-          TabContent() { QuestionBankView({ root: true }) }.tabBar(this.tabBarItem(2, $r('sys.symbol.checkmark_circle'), '题库'))
-          TabContent() { ProfileView() }.tabBar(this.tabBarItem(3, $r('sys.symbol.person'), '个人中心'))
+        // 主内容区：Swiper 横向分页，滑动/点击均可切换，底部预留悬浮栏高度
+        Swiper() {
+          Column() { CategoryView() }
+            .height('100%')
+            .padding({ bottom: FLOATING_RESERVE + this.safeBottom })
+          Column() { FlashcardView() }
+            .height('100%')
+            .padding({ bottom: FLOATING_RESERVE + this.safeBottom })
+          Column() { QuestionBankView({ root: true }) }
+            .height('100%')
+            .padding({ bottom: FLOATING_RESERVE + this.safeBottom })
+          Column() { ProfileView() }
+            .height('100%')
+            .padding({ bottom: FLOATING_RESERVE + this.safeBottom })
         }
-        .barPosition(BarPosition.End)
-        .barHeight(0)
-        .onChange((idx: number) => {
-          this.current = idx;
-        })
         .width('100%')
         .height('100%')
-        .backgroundColor($r('app.color.background'))
-        .expandSafeArea(SAFE_AREA_TYPES, SAFE_AREA_EDGES)
-
-        // 悬浮自定义底部 Tab 栏：白底胶囊 + 圆角 + 阴影，左右各 4% 外边距
-        Column() {
-          Row() {
-            this.tabBarItem(0, $r('sys.symbol.book'), '知识库')
-            this.tabBarItem(1, $r('sys.symbol.bookmark'), '速记卡')
-            this.tabBarItem(2, $r('sys.symbol.checkmark_circle'), '题库')
-            this.tabBarItem(3, $r('sys.symbol.person'), '个人中心')
-          }
-          .width('92%')
-          .height(TAB_BAR_HEIGHT)
-          .backgroundColor($r('app.color.surface'))
-          .borderRadius(TAB_BAR_HEIGHT / 2)
-          .padding({ left: SPACE.xs, right: SPACE.xs })
-          .shadow({ radius: 16, color: '#1F2A3722', offsetY: 4 })
-        }
-        .width('100%')
-        .padding({
-          top: TAB_BAR_TOP_GAP,
-          bottom: this.safeBottom + TAB_BAR_BOTTOM_GAP
+        .index(this.current)
+        .indicator(false)
+        .loop(false)
+        .onChange((idx: number) => {
+          this.current = idx;
+          this.burst(idx);
         })
-        .alignItems(HorizontalAlign.Center)
+
+        // 悬浮胶囊底栏（叠加在内容上方，跟随握持手左右平移）
+        this.floatingTabBar()
       }
       .width('100%')
       .height('100%')
       .backgroundColor($r('app.color.background'))
       .expandSafeArea(SAFE_AREA_TYPES, SAFE_AREA_EDGES)
-      // 安全区内缩由各 Tab 页面根 Column 的 padding(top/bottom: safeTop/safeBottom) 统一处理，
-      // 此处不再叠加，避免顶部双倍空白（之前 safeTop 被叠两次导致"我的"距状态栏过远）。
     }
     .hideTitleBar(true)
     .navDestination(this.routeMap)
@@ -260,62 +444,62 @@ struct IndexPreview {
   @State current: number = 0;
   @Provide pageStack: NavPathStack = new NavPathStack();
   @StorageProp('safeBottom') safeBottom: number = 24;
-  private tabsController: TabsController = new TabsController();
 
-  @Builder tabBarItem(idx: number, icon: Resource, label: string) {
+  private readonly tabIcons: Resource[] = [
+    $r('sys.symbol.book'),
+    $r('sys.symbol.bookmark'),
+    $r('sys.symbol.checkmark_circle'),
+    $r('sys.symbol.person')
+  ];
+  private readonly tabLabels: string[] = ['知识库', '速记卡', '题库', '个人中心'];
+
+  @Builder previewTabItem(idx: number, icon: Resource, label: string) {
     Column() {
       SymbolGlyph(icon)
-        .fontSize(22)
+        .fontSize(20)
         .fontColor([this.current === idx ? $r('app.color.brand') : $r('app.color.text_primary')])
       Text(label)
         .fontSize(FONT.mini)
-        .fontWeight(this.current === idx ? FontWeight.Medium : FontWeight.Normal)
         .fontColor(this.current === idx ? $r('app.color.brand') : $r('app.color.text_primary'))
-        .margin({ top: SPACE.xs })
+        .maxLines(1)
+        .textAlign(TextAlign.Center)
+        .width('100%')
+        .margin({ top: 2 })
     }
     .layoutWeight(1)
     .height('100%')
     .justifyContent(FlexAlign.Center)
     .onClick(() => {
-      if (this.current !== idx) {
-        this.current = idx;
-        this.tabsController.changeIndex(idx);
-      }
+      this.current = idx;
     })
   }
 
   build() {
     Stack({ alignContent: Alignment.Bottom }) {
-      Tabs({ barPosition: BarPosition.End, controller: this.tabsController }) {
-        TabContent() { CategoryView() }.tabBar(this.tabBarItem(0, $r('sys.symbol.book'), '知识库'))
-        TabContent() { FlashcardView() }.tabBar(this.tabBarItem(1, $r('sys.symbol.bookmark'), '速记卡'))
-        TabContent() { QuestionBankView({ root: true }) }.tabBar(this.tabBarItem(2, $r('sys.symbol.checkmark_circle'), '题库'))
-        TabContent() { ProfileView() }.tabBar(this.tabBarItem(3, $r('sys.symbol.person'), '个人中心'))
+      Swiper() {
+        CategoryView()
+        FlashcardView()
+        QuestionBankView({ root: true })
+        ProfileView()
       }
-      .barPosition(BarPosition.End)
-      .barHeight(0)
-      .onChange((idx: number) => { this.current = idx; })
       .width('100%')
       .height('100%')
-      .backgroundColor($r('app.color.background'))
+      .index(this.current)
+      .indicator(false)
+      .loop(false)
+      .onChange((idx: number) => { this.current = idx; })
 
-      Column() {
-        Row() {
-          this.tabBarItem(0, $r('sys.symbol.book'), '知识库')
-          this.tabBarItem(1, $r('sys.symbol.bookmark'), '速记卡')
-          this.tabBarItem(2, $r('sys.symbol.checkmark_circle'), '题库')
-          this.tabBarItem(3, $r('sys.symbol.person'), '个人中心')
-        }
-        .width('92%')
-        .height(TAB_BAR_HEIGHT)
-        .backgroundColor($r('app.color.surface'))
-        .borderRadius(TAB_BAR_HEIGHT / 2)
-        .padding({ left: SPACE.xs, right: SPACE.xs })
-        .shadow({ radius: 16, color: '#1F2A3722', offsetY: 4 })
+      Row({ space: 0 }) {
+        ForEach([0, 1, 2, 3], (idx: number) => {
+          this.previewTabItem(idx, this.tabIcons[idx], this.tabLabels[idx]);
+        }, (idx: number) => idx.toString())
       }
-      .width('100%')
-      .padding({ top: TAB_BAR_TOP_GAP, bottom: this.safeBottom + TAB_BAR_BOTTOM_GAP })
-      .alignItems(HorizontalAlign.Center)
+      .width(FLOATING_BAR_WIDTH)
+      .height(FLOATING_BAR_HEIGHT)
+      .borderRadius(30)
+      .backgroundColor(Color.White)
+      .shadow({ radius: 16, color: 'rgba(0, 0, 0, 0.12)', offsetX: 0, offsetY: 4 })
+      .margin({ bottom: this.safeBottom + 16 })
     }
     .width('100%')
     .height('100%')

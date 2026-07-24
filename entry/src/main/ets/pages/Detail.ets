@@ -3,7 +3,6 @@ import { DataStore } from '../model/DataStore';
 import { AnswerRecord, Article, Question, Section } from '../model/Types';
 import { FavStore } from '../utils/FavStore';
 import { UserTagStore, PRESET_MARK_TAGS } from '../utils/UserTagStore';
-import { RecorderBar } from '../utils/RecorderBar';
 import { ReaderIcon } from '../utils/SpeechReader';
 import { BackHeader } from '../utils/BackHeader';
 import { SectionTitle, HighlightText } from '../utils/Ui';
@@ -131,6 +130,8 @@ export struct Detail {
     const token: number = ++this.loadToken;
     const ctx = getContext(this) as common.UIAbilityContext;
     await DataStore.load(ctx);
+    // 兜底确保收藏存储就绪（启动链未建立时，详情页也能自愈，避免点击收藏崩溃）
+    await FavStore.init(ctx);
     if (token !== this.loadToken) return;
     if (kind === 'article') {
       this.article = DataStore.articleById(id) ?? null;
@@ -183,7 +184,12 @@ export struct Detail {
   }
 
   private async toggleFav(): Promise<void> {
-    this.fav = await FavStore.toggle(this.itemId);
+    try {
+      this.fav = await FavStore.toggle(this.itemId);
+    } catch (e) {
+      // 收藏存储异常时仅给出反馈，不向上抛导致 app 崩溃
+      console.error('toggleFav failed:', JSON.stringify(e));
+    }
   }
 
   // 切换预设标记（已加则移除，未加则添加）
@@ -443,13 +449,7 @@ export struct Detail {
         .margin({ top: SPACE.md, bottom: SPACE.md })
         .alignItems(HorizontalAlign.Start)
 
-        // 3. 开口自测：录音 + 回放 + 转写 + 计时（按当前题 id 存本机）
-        Column() {
-          RecorderBar({ qid: this.itemId })
-        }
-        .width('100%')
-
-        // 4. 解析与示范：分段卡片（参考解析 / 知识拓展 / 来源）
+        // 3. 解析与示范：分段卡片（参考解析 / 知识拓展 / 来源）
         Column() {
           Text('解析与示范')
             .fontSize(FONT.title)
@@ -653,7 +653,8 @@ export struct Detail {
           BackHeader({
             title: this.kind === 'article' ? (this.article?.title ?? '知识点') : '真题详情',
             showAction: true,
-            action: this.favAction
+            // 以「值传递」形式传入，确保 builder 内的 this 仍指向 Detail（按引用传递会被子组件 this 覆盖，导致 this.toggleFav 为 undefined 而崩溃）
+            action: (): void => { this.favAction() }
           })
         }
         .margin({ top: this.safeTop })
@@ -675,7 +676,7 @@ export struct Detail {
       .backgroundColor($r('app.color.background'))
       .expandSafeArea(SAFE_AREA_TYPES, SAFE_AREA_EDGES)
       .justifyContent(FlexAlign.Start)
-      // 顶部安全区已上移到 BackHeader 外层 Column 的 margin(top)，这里只保留底部内边距
+      // 详情页是整屏 NavDestination；进入后首页（含悬浮 Tab 栏）已被隐藏，底部只留系统安全区即可
       .padding({ bottom: this.safeBottom })
       // 内容区触摸：识别左右手（按按下点 x 落在屏幕哪一侧）
       .onTouch((e: TouchEvent) => {
