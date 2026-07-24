@@ -34,6 +34,9 @@ class CameraXComponentController extends XComponentController {
   }
 }
 
+// 录制回看页跳转参数（规避 arkts-no-untyped-obj-literals）
+interface VideoReviewParam { videoPath: string }
+
 @Component
 export struct VideoAnswerView {
   @State question: Question | null = null;
@@ -70,6 +73,9 @@ export struct VideoAnswerView {
   private thinkTimer: number = 0;
   private recTimer: number = 0;
 
+  // 由 VideoReview 返回时通过 AppStorage 信号触发复位（兜底，保证 onPageShow 未触发也能重录）
+  @StorageLink('vaReset') @Watch('onVaReset') vaReset: number = 0;
+
   aboutToAppear(): void {
     // 注册 surface 创建回调，拿到 surfaceId 后再初始化相机
     this.xComponentController.surfaceCreatedCallback = (surfaceId: string): void => {
@@ -95,6 +101,35 @@ export struct VideoAnswerView {
       this.recording = false;
     }
     this.releaseCamera();
+  }
+
+  // 离开本页（跳回看页 / 返回上级）时释放相机，避免占用并复位状态
+  onPageHide(): void {
+    this.stopRecTimer();
+    this.releaseCamera();
+  }
+
+  // 从回看页（重录 / 关闭）返回本页时触发，重置录制状态并重新初始化相机，
+  // 否则旧 AVRecorder 停在 STOPPED 态，再次 start() 会报 "not permit in current state"，且录制计时未复位。
+  onPageShow(): void {
+    this.prepareForReRecord();
+  }
+
+  // 与 onPageShow 同效，由 VideoReview 在返回前通过 AppStorage 信号触发（兜底，避免 onPageShow 未触发导致卡死）
+  private onVaReset(): void {
+    this.prepareForReRecord();
+  }
+
+  // 重置录制状态并重新初始化相机，使可再次录制。
+  // 注意：重录不重置「思考计时」，沿用首次作答的思考用时（故不触碰 thinkElapsed / thinkActive）。
+  private prepareForReRecord(): void {
+    this.recording = false;
+    this.recSec = 0;
+    this.stopRecTimer();
+    this.cameraInitStarted = false;
+    this.releaseCamera().then(() => {
+      this.initCamera();
+    });
   }
 
   // ---- 思考时间 ----
@@ -371,14 +406,16 @@ export struct VideoAnswerView {
       return;
     }
     try {
-      if (this.recording) {
-        await this.videoOutput.stop();
-        await this.avRecorder?.stop();
-        this.recording = false;
-        this.stopRecTimer();
-        this.saveAnswerRecord();
-        promptAction.showToast({ message: '录制完成', duration: 1200 });
-      } else {
+    if (this.recording) {
+      await this.videoOutput.stop();
+      await this.avRecorder?.stop();
+      this.recording = false;
+      this.stopRecTimer();
+      await this.saveAnswerRecord();
+      // 跳转到录制回看页：用户可重录或进入下一步
+      const reviewParams: VideoReviewParam = { videoPath: this.videoPath };
+      this.pageStack.pushPathByName('VideoReview', reviewParams);
+    } else {
         await this.avRecorder?.start();
         await this.videoOutput.start();
         this.recording = true;

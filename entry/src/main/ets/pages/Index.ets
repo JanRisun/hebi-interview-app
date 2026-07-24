@@ -24,6 +24,7 @@ import { ExamRecord } from './ExamRecord';
 import { StudyPlan } from './StudyPlan';
 import { AudioAnswerView } from './AudioAnswer';
 import { VideoAnswerView } from './VideoAnswer';
+import { VideoReviewView } from './VideoReview';
 import { FONT, SPACE, SAFE_AREA_TYPES, SAFE_AREA_EDGES } from '../utils/Theme';
 import { applyStatusBar } from '../utils/StatusBar';
 import { curves } from '@kit.ArkUI';
@@ -395,6 +396,16 @@ struct Index {
     } else if (name === 'VideoAnswer') {
       NavDestination() {
         VideoAnswerView({ params: param })
+      }.hideTitleBar(true)
+      .onAppear(() => {
+        applyStatusBar('brand');
+      })
+      .onDisAppear(() => {
+        applyStatusBar('brand');
+      })
+    } else if (name === 'VideoReview') {
+      NavDestination() {
+        VideoReviewView({ params: param })
       }.hideTitleBar(true)
       .onAppear(() => {
         applyStatusBar('brand');
