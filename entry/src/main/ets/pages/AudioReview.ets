@@ -1,13 +1,25 @@
-// 音频作答点评页：题目回顾 + AI 评分 / 点评 / AI 润色 / 解析与示范（逐字稿=题目 answerScript）
+// 音频作答点评页：题目 + 答题（思考时间 + 答题音频）+ AI 评分 / 点评 / AI 润色 / 解析与示范
 // 布局：BackHeader + 横向 sticky Tab 栏（随滚动常驻顶部）+ 纵向滚动卡片内容；点击 Tab 滚动到对应小节。
+import { common } from '@kit.AbilityKit';
 import { DataStore } from '../model/DataStore';
-import { Question } from '../model/Types';
+import { AnswerRecord, Question } from '../model/Types';
 import { FONT, RADIUS, SPACE, SAFE_AREA_TYPES, SAFE_AREA_EDGES } from '../utils/Theme';
 import { BackHeader } from '../utils/BackHeader';
+import { hilog } from '@kit.PerformanceAnalysisKit';
+import { BusinessError } from '@kit.BasicServicesKit';
+import { media } from '@kit.MediaKit';
+import { fileIo } from '@kit.CoreFileKit';
+import { preferences } from '@kit.ArkData';
 
-// 路由参数：题目 id（用于拉取题目内容作为「答题」小节）
+const DOMAIN: number = 0x0001;
+const TAG: string = 'AudioReview';
+
+// 路由参数：题目 id（用于拉取题目内容作为「题目」「答题」小节）+ 答题页直接透传的作答数据
 interface AudioReviewParam {
   id: string;
+  thinkSec?: number;
+  speakSec?: number;
+  audioPath?: string;
 }
 
 @Component
@@ -18,21 +30,77 @@ export struct AudioReviewView {
   @Consume pageStack: NavPathStack;
 
   @State question: Question | null = null;
-  @State activeTab: number = 0;                         // 当前高亮的 tab
-  @State sectionOffsets: number[] = [0, 0, 0, 0, 0];     // 5 个小节相对 Scroll 内部的 yOffset
+  @State record: AnswerRecord | null = null;             // 答题记录（思考时长 + 作答时长 + 音频路径）
+  @State thinkSec: number = 0;                           // 思考时长（秒），从记录提取以保证响应式刷新
+  @State speakSec: number = 0;                           // 作答时长（秒），从记录提取以保证响应式刷新
+  @State activeTab: number = 0;                          // 当前高亮的 tab
+  @State sectionOffsets: number[] = [0, 0, 0, 0, 0, 0];  // 6 个小节相对 Scroll 内部的 yOffset
 
   @State foldExpanded: boolean = false;                 // 「解析与示范」长文本是否展开
   @State scriptNeedFold: boolean = false;               // 参考解析是否需要折叠（超出默认 8 行）
   @State scriptContentWidth: number = 0;                // 「解析与示范」卡片内文本可用宽度（vp），布局后获取
 
-  private scroller: Scroller = new Scroller();
-  private readonly tabs: string[] = ['答题', '得分', '点评', 'AI润色', '解析与示范'];
+  // 答题音频回放（与音频作答页一致的 AVPlayer 实现）
+  @State playbackProgress: number = 0;                  // 回放进度（毫秒）
+  @State playbackDuration: number = 0;                  // 回放总时长（毫秒）
+  @State isPlaying: boolean = false;                    // 是否正在回放
+  @State playbackCompleted: boolean = false;            // 是否已播完
+  private avPlayer: media.AVPlayer | undefined = undefined;
+  private playFile: fileIo.File | undefined = undefined;
+  private pendingPlay: boolean = false;                 // 尚未 prepared 时用户点播放，挂起待 prepared 后自动播放
+  private avState: string = '';
 
-  aboutToAppear(): void {
+  private scroller: Scroller = new Scroller();
+  private readonly tabs: string[] = ['题目', '答题', '得分', '点评', 'AI润色', '解析与示范'];
+
+  async aboutToAppear(): Promise<void> {
     const p: AudioReviewParam | null = this.params as AudioReviewParam;
-    if (p && p.id) {
-      this.question = DataStore.questionById(p.id) ?? null;
+    if (!p || !p.id) {
+      return;
     }
+    const ctx = getContext(this) as common.UIAbilityContext;
+    await DataStore.load(ctx);
+    this.question = DataStore.questionById(p.id) ?? null;
+
+    // 优先使用路由参数直接透传的答题数据（音频作答页实时数据，最可靠，避免子组件内读取偏好存储失败）
+    if (p.thinkSec !== undefined || p.speakSec !== undefined || p.audioPath) {
+      this.thinkSec = p.thinkSec ?? 0;
+      this.speakSec = p.speakSec ?? 0;
+      this.record = {
+        id: p.id,
+        title: this.question ? this.question.title : '',
+        thinkSec: this.thinkSec,
+        speakSec: this.speakSec,
+        date: '',
+        audioPath: p.audioPath ?? ''
+      };
+      if (p.audioPath) {
+        this.initPlayback(p.audioPath);
+      }
+      return;
+    }
+
+    // 兜底：从本地偏好存储读取（如通过其它入口进入点评页）
+    try {
+      const prefs = await preferences.getPreferences(ctx, 'practice');
+      const raw: string = prefs.getSync('a_' + p.id, '') as string;
+      if (raw) {
+        const rec: AnswerRecord = JSON.parse(raw) as AnswerRecord;
+        this.record = rec;
+        this.thinkSec = rec.thinkSec ?? 0;
+        this.speakSec = rec.speakSec ?? 0;
+        if (rec.audioPath) {
+          this.initPlayback(rec.audioPath);
+        }
+      }
+    } catch (e) {
+      const err = e as BusinessError;
+      hilog.error(DOMAIN, TAG, 'load record fail: %{public}s', err.message);
+    }
+  }
+
+  aboutToDisappear(): void {
+    this.releasePlayback();
   }
 
   // 点击 Tab：滚动到对应小节。offset 由 onAreaChange 在布局后填充
@@ -67,10 +135,122 @@ export struct AudioReviewView {
     this.scriptNeedFold = lines > 8;
   }
 
+  // 秒数格式化为 mm:ss
+  private fmt(sec: number): string {
+    const total: number = Math.max(0, Math.floor(sec ?? 0));
+    const m: number = Math.floor(total / 60);
+    const s: number = total % 60;
+    return (m < 10 ? '0' + m : '' + m) + ':' + (s < 10 ? '0' + s : '' + s);
+  }
+
+  // ---- 答题音频回放：AVPlayer 播放本地 WAV（与音频作答页一致） ----
+  private async initPlayback(path: string): Promise<void> {
+    this.releasePlayback();
+    try {
+      const stat: fileIo.Stat = fileIo.statSync(path);
+      const file: fileIo.File = fileIo.openSync(path, fileIo.OpenMode.READ_ONLY);
+      this.playFile = file;
+      const player: media.AVPlayer = await media.createAVPlayer();
+      this.avPlayer = player;
+
+      player.on('error', (err: BusinessError): void => {
+        hilog.error(DOMAIN, TAG, 'avPlayer error: %{public}s', err.message);
+      });
+
+      player.on('stateChange', (state, reason): void => {
+        this.avState = state;
+        if (state === 'initialized') {
+          try { player.prepare(); } catch (e) { /* ignore */ }
+        } else if (state === 'prepared') {
+          this.playbackDuration = player.duration;
+          this.playbackCompleted = false;
+          if (this.pendingPlay) {
+            this.pendingPlay = false;
+            try { player.play(); } catch (e) { /* ignore */ }
+            this.isPlaying = true;
+          }
+        } else if (state === 'completed') {
+          this.isPlaying = false;
+          this.playbackCompleted = true;
+          this.playbackProgress = this.playbackDuration;
+        } else if (state === 'released') {
+          this.avPlayer = undefined;
+        }
+      });
+
+      player.on('timeUpdate', (time): void => {
+        this.playbackProgress = time;
+      });
+
+      player.fdSrc = { fd: file.fd, offset: 0, length: stat.size };
+    } catch (e) {
+      const err = e as BusinessError;
+      hilog.error(DOMAIN, TAG, 'initPlayback fail: %{public}s', err.message);
+    }
+  }
+
+  private releasePlayback(): void {
+    this.isPlaying = false;
+    this.pendingPlay = false;
+    this.avState = '';
+    if (this.avPlayer) {
+      try {
+        this.avPlayer.stop();
+        this.avPlayer.release();
+      } catch (e) { /* ignore */ }
+      this.avPlayer = undefined;
+    }
+    if (this.playFile) {
+      try { fileIo.closeSync(this.playFile.fd); } catch (e) { /* ignore */ }
+      this.playFile = undefined;
+    }
+  }
+
+  private togglePlayback(): void {
+    try {
+      const p = this.avPlayer;
+      if (!p) return;
+      if (this.isPlaying) {
+        p.pause();
+        this.isPlaying = false;
+        return;
+      }
+      if (this.playbackCompleted) {
+        p.seek(0);
+        this.playbackProgress = 0;
+        this.playbackCompleted = false;
+      }
+      if (this.avState !== 'prepared' && this.avState !== 'playing' && this.avState !== 'paused') {
+        this.pendingPlay = true;
+        return;
+      }
+      try { p.play(); } catch (e) { /* ignore */ }
+      this.isPlaying = true;
+    } catch (e) {
+      const err = e as BusinessError;
+      hilog.error(DOMAIN, TAG, 'togglePlayback fail: %{public}s', err.message);
+    }
+  }
+
+  private seekTo(ms: number): void {
+    try {
+      const p = this.avPlayer;
+      if (!p) return;
+      p.seek(ms);
+      this.playbackProgress = ms;
+      if (this.playbackCompleted) {
+        this.playbackCompleted = false;
+      }
+    } catch (e) {
+      const err = e as BusinessError;
+      hilog.error(DOMAIN, TAG, 'seekTo fail: %{public}s', err.message);
+    }
+  }
+
   build() {
     Column() {
       // sticky：标题栏
-      BackHeader({ title: '答题点评' })
+      BackHeader({ title: '点评' })
 
       // sticky：横向 Tab 栏
       this.tabBar()
@@ -78,6 +258,7 @@ export struct AudioReviewView {
       // 滚动内容
       Scroll(this.scroller) {
         Column() {
+          this.questionSection()
           this.answerSection()
           this.scoreSection()
           this.reviewSection()
@@ -176,10 +357,10 @@ export struct AudioReviewView {
     .margin({ bottom: SPACE.md })
   }
 
-  // ---- 答题小节：题干 + 提示 + 时长信息 ----
-  @Builder answerSection() {
+  // ---- 题目小节：题干 + 提示 ----
+  @Builder questionSection() {
     Column() {
-      this.sectionTitle('答题')
+      this.sectionTitle('题目')
       Text(this.question ? this.question.title : '暂无题目内容')
         .fontSize(FONT.title)
         .fontWeight(FontWeight.Bold)
@@ -189,12 +370,6 @@ export struct AudioReviewView {
         .fontSize(FONT.body)
         .fontColor($r('app.color.text_body'))
         .lineHeight(22)
-      // 答题基础信息
-      Row({ space: SPACE.xl }) {
-        this.metaChip('思考时长', '12 秒')
-        this.metaChip('作答时长', '45 秒')
-      }
-      .margin({ top: SPACE.md })
     }
     .width('92%')
     .padding({ left: SPACE.lg, right: SPACE.lg, top: SPACE.lg, bottom: SPACE.lg })
@@ -206,6 +381,117 @@ export struct AudioReviewView {
     .onAreaChange((oldA: Area, newA: Area): void => {
       this.onSectionArea(0, oldA, newA);
     })
+  }
+
+  // ---- 答题小节：思考时间 + 作答时长 + 答题音频回放 ----
+  @Builder answerSection() {
+    Column() {
+      this.sectionTitle('答题')
+      // 思考时间 / 作答时长
+      Row({ space: SPACE.xl }) {
+        this.metaChip('思考时间', this.fmt(this.thinkSec))
+        this.metaChip('作答时长', this.fmt(this.speakSec))
+      }
+      .margin({ bottom: SPACE.md })
+
+      // 答题音频回放
+      if (this.record && this.record.audioPath) {
+        this.audioPlaybackBar()
+      } else {
+        Text('暂无答题音频')
+          .fontSize(FONT.body)
+          .fontColor($r('app.color.text_secondary'))
+          .margin({ top: SPACE.xs })
+      }
+    }
+    .width('92%')
+    .padding({ left: SPACE.lg, right: SPACE.lg, top: SPACE.lg, bottom: SPACE.lg })
+    .margin({ left: SPACE.md, right: SPACE.md, top: SPACE.md })
+    .borderRadius(RADIUS.lg)
+    .backgroundColor($r('app.color.surface'))
+    .alignItems(HorizontalAlign.Start)
+    .id('sec1')
+    .onAreaChange((oldA: Area, newA: Area): void => {
+      this.onSectionArea(1, oldA, newA);
+    })
+  }
+
+  // 音频回放条：左播放按钮 + 中间时间/进度（与音频作答页一致）
+  @Builder audioPlaybackBar() {
+    Row() {
+      Stack({ alignContent: Alignment.Center }) {
+        if (this.isPlaying) {
+          Row() {
+            Column()
+              .width(4)
+              .height(16)
+              .backgroundColor($r('app.color.on_primary'))
+              .borderRadius(1)
+              .margin({ right: 4 })
+            Column()
+              .width(4)
+              .height(16)
+              .backgroundColor($r('app.color.on_primary'))
+              .borderRadius(1)
+          }
+        } else if (this.playbackCompleted) {
+          SymbolGlyph($r('sys.symbol.arrow_counterclockwise'))
+            .fontSize(20)
+            .fontColor([$r('app.color.on_primary')])
+            .scale({ x: 1.3, y: 1.3 })
+        } else {
+          SymbolGlyph($r('sys.symbol.play_fill'))
+            .fontSize(18)
+            .fontColor([$r('app.color.on_primary')])
+            .offset({ x: 1 })
+        }
+      }
+      .width(44)
+      .height(44)
+      .borderRadius(22)
+      .backgroundColor($r('app.color.brand'))
+      .onClick(() => {
+        this.togglePlayback();
+      })
+
+      Column() {
+        Row() {
+          Text(this.fmt(Math.floor(this.playbackProgress / 1000)))
+            .fontSize(FONT.bodySm)
+            .fontColor($r('app.color.text_primary'))
+            .margin({ right: SPACE.sm })
+          Blank()
+          Text(this.fmt(Math.max(0, Math.floor(this.playbackDuration / 1000))))
+            .fontSize(FONT.bodySm)
+            .fontColor($r('app.color.text_secondary'))
+        }
+        .width('100%')
+        .margin({ bottom: 4 })
+
+        Slider({
+          value: this.playbackProgress,
+          min: 0,
+          max: this.playbackDuration > 0 ? this.playbackDuration : 1,
+          step: 100
+        })
+          .blockColor($r('app.color.brand'))
+          .trackColor($r('app.color.brand_light'))
+          .selectedColor($r('app.color.brand'))
+          .trackThickness(3)
+          .blockSize({ width: 10, height: 10 })
+          .width('100%')
+          .onChange((value: number): void => {
+            this.seekTo(value);
+          })
+      }
+      .layoutWeight(1)
+      .margin({ left: SPACE.md, right: SPACE.md })
+    }
+    .width('100%')
+    .padding({ left: SPACE.md, right: SPACE.md, top: SPACE.md, bottom: SPACE.md })
+    .backgroundColor($r('app.color.surface_variant'))
+    .borderRadius(RADIUS.md)
+    .alignItems(VerticalAlign.Center)
   }
 
   @Builder metaChip(label: string, value: string) {
@@ -278,9 +564,9 @@ export struct AudioReviewView {
     .borderRadius(RADIUS.lg)
     .backgroundColor($r('app.color.surface'))
     .alignItems(HorizontalAlign.Start)
-    .id('sec1')
+    .id('sec2')
     .onAreaChange((oldA: Area, newA: Area): void => {
-      this.onSectionArea(1, oldA, newA);
+      this.onSectionArea(2, oldA, newA);
     })
   }
 
@@ -341,9 +627,9 @@ export struct AudioReviewView {
     .borderRadius(RADIUS.lg)
     .backgroundColor($r('app.color.surface'))
     .alignItems(HorizontalAlign.Start)
-    .id('sec2')
+    .id('sec3')
     .onAreaChange((oldA: Area, newA: Area): void => {
-      this.onSectionArea(2, oldA, newA);
+      this.onSectionArea(3, oldA, newA);
     })
   }
 
@@ -390,9 +676,9 @@ export struct AudioReviewView {
     .borderRadius(RADIUS.lg)
     .backgroundColor($r('app.color.surface'))
     .alignItems(HorizontalAlign.Start)
-    .id('sec3')
+    .id('sec4')
     .onAreaChange((oldA: Area, newA: Area): void => {
-      this.onSectionArea(3, oldA, newA);
+      this.onSectionArea(4, oldA, newA);
     })
   }
 
@@ -433,9 +719,9 @@ export struct AudioReviewView {
     .borderRadius(RADIUS.lg)
     .backgroundColor($r('app.color.surface'))
     .alignItems(HorizontalAlign.Start)
-    .id('sec4')
+    .id('sec5')
     .onAreaChange((oldA: Area, newA: Area): void => {
-      this.onSectionArea(4, oldA, newA);
+      this.onSectionArea(5, oldA, newA);
       this.scriptContentWidth = newA.width as number;
       this.updateFold();
     })

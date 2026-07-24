@@ -21,7 +21,7 @@ const TAG: string = 'AudioAnswer';
 // 默认作答时长上限（秒）：仅用于显示，不强制
 const DEFAULT_SPEAK_SEC: number = 300;
 // 答题点评页跳转参数（规避 arkts-no-untyped-obj-literals）
-interface AudioReviewParam { id: string }
+interface AudioReviewParam { id: string; thinkSec?: number; speakSec?: number; audioPath?: string }
 
 @Component
 export struct AudioAnswerView {
@@ -433,7 +433,12 @@ export struct AudioAnswerView {
   // 提交点评：跳转到答题点评页（AI 分析结果页面），传入题目 id 用于回显题目内容
   private submitReview(): void {
     const id: string = this.question ? this.question.id : '';
-    const params: AudioReviewParam = { id: id };
+    const params: AudioReviewParam = {
+      id: id,
+      thinkSec: this.thinkSavedSec,
+      speakSec: this.recSec,
+      audioPath: this.recPath
+    };
     this.pageStack.pushPathByName('AudioReview', params);
   }
 
