@@ -1,17 +1,18 @@
 // 端侧语音识别转写助手（Core Speech Kit · speechRecognizer）
-// 作用：把本地 WAV(PCM 16k / 单声道 / 16bit) 录音文件转成文字，全程离线、零密钥、隐私不出本机。
-// 用于「开口自测」环节：考生口述作答 → 本地转写 → 复盘时对照逐字稿找差距（卡顿/漏点/口头禅）。
-// 为什么需要它：TTS 只是「听」，ASR 才是「说→文字」，二者互补，构成完整的开口练习闭环。
+// 作用：把本地 WAV(PCM 16k / 单声道 / 16bit) 录音文件转成文字，用于回访时对照逐字稿。
 //
-// API 约束（已核实 HarmonyOS 官方文档，本工程 API 20 可用）：
-//   - 起始版本 API 11，离线模型可用，仅需 ohos.permission.MICROPHONE（RecorderBar 已申请）。
-//   - 文件转文字：startListening 配 recognitionMode:0 + audioInfo{pcm,16000,1,16}；循环 writeAudio 喂 PCM 流。
-//   - writeAudio 每次块长【仅支持 640 或 1280 字节】，否则识别率骤降甚至报错。
-//   - 单题作答约 150s > 60s 短语音上限 → createEngine 必须 recognizerMode:'long'（≤8h）。
-//   - 结果：onResult 回调中 result.result 为文字、result.isFinal=true 为最终完整结果；finish() 触发 onComplete。
+// API 约束（已核实，本工程 API 20 可用）：
+//   - createEngine({ language:'zh-CN', online, extraParams:{ locate:'CN', recognizerMode:'long' } })
+//   - setListener({ onStart, onResult, onError, onComplete })
+//   - startListening({ sessionId,
+//       audioInfo:{ audioType:'pcm', sampleRate:16000, soundChannel:1, sampleBit:16 },
+//       extraParams:{ recognitionMode:1, maxAudioDuration:600000 } })
+//   - 从 WAV 跳过 44 字节头 → 循环 read 640/1280 字节块 → writeAudio(sessionId, chunk)
+//   - finish(sessionId) → shutdown()
+//   - onResult 中 result.result 即文字；isFinal=true 为整句结束，据此累积成完整逐字稿。
 //
-// ⚠️ 输入格式要求：仅支持 WAV(PCM 16k/单声道/16bit)。RecorderBar 已改用 OH Audio 直录 PCM 写 WAV，
-//   故「录音(WAV/PCM) → 转写」链路已闭环，无需额外解码步骤。
+// ⚠️ online 取值：本设备未预置离线中文模型，离线(1)模式会“假成功”后卡死（既不 onError 也不 onComplete）。
+//   故统一用 online:0（云侧识别，需联网）。云侧失败会正常走 onError，不会无限转写中。
 import { speechRecognizer } from '@kit.CoreSpeechKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { fileIo } from '@kit.CoreFileKit';
@@ -26,25 +27,29 @@ const WAV_HEADER: number = 44;
 const CHUNK: number = 1280;
 // 模拟语速写入节奏（每 40ms 写一块），防止引擎内部队列溢出
 const WRITE_INTERVAL_MS: number = 40;
+// 兜底超时（ms）：finish 后若识别异常导致 onComplete 不触发，最多再等这段时间用已得文字结算，杜绝无限转写中
+const GUARD_MS: number = 15000;
 
 class _AsrHelperImpl {
   private engine: speechRecognizer.SpeechRecognitionEngine | undefined = undefined;
   private sessionId: string = 'asr_' + Date.now().toString();
-  private resultText: string = '';
-  private lastInitErr: string = '';   // 最近一次 createEngine 失败的具体信息（含错误码），用于上层提示
+  private resultText: string = '';      // 当前可见文字（已确认句 + 当前句中间结果）
+  private committedText: string = '';   // 已整句确认(isFinal)累积的文字
+  private lastInitErr: string = '';      // 最近一次 createEngine 失败信息（含错误码），用于上层提示
   private resolveFn: ((text: string) => void) | undefined = undefined;
   private rejectFn: ((err: string) => void) | undefined = undefined;
+  private guardTimer: number = 0;        // 兜底定时器句柄
 
-  // 创建引擎（long 离线模式）；已存在直接返回 true。返回 false 多为设备未预置离线中文模型。
+  // 创建引擎（云侧 long 模式）；已存在直接返回 true。返回 false 多为无网络/云侧服务不可用。
   private async ensureEngine(): Promise<boolean> {
     if (this.engine) return true;
     const extraParam: Record<string, Object> = {
       'locate': 'CN',
-      'recognizerMode': 'long'   // 单题 150s > 60s 短语音上限，必须用 long
+      'recognizerMode': 'long'   // 单题 150s > 60s 短语音上限，必须用 long（≤8h）
     };
     const initParams: speechRecognizer.CreateEngineParams = {
       language: 'zh-CN',
-      online: 1,                 // 1 = 离线模型（当前仅支持离线，需设备预置 zh-CN 模型）
+      online: 0,                 // 0 = 云侧识别（本设备无离线中文模型，离线模式会卡死）
       extraParams: extraParam
     };
     return new Promise<boolean>((resolve) => {
@@ -62,34 +67,58 @@ class _AsrHelperImpl {
     });
   }
 
-  // 注册监听：结果生灭完全由 onResult/finish 管理
+  // 注册监听：onResult 累积整句，onComplete 结算，onError 失败；均会释放引擎并清兜底定时器
   private setListener(): void {
     if (!this.engine) return;
     const listener: speechRecognizer.RecognitionListener = {
       onStart: (_sid: string, _msg: string) => { /* 引擎就绪，无需处理 */ },
       onEvent: (_sid: string, _code: number, _msg: string) => { /* 内部事件（静音检测等），忽略 */ },
       onResult: (_sid: string, result: speechRecognizer.SpeechRecognitionResult) => {
-        // result.result 为当前已识别文字；isFinal=true 为最终完整结果
-        this.resultText = result.result;
+        // isFinal=true 为整句结束，追加到已确认累积；否则为当前句的中间结果，仅拼接展示
+        if (result.isFinal) {
+          this.committedText += result.result;
+          this.resultText = this.committedText;
+        } else {
+          this.resultText = this.committedText + result.result;
+        }
       },
       onComplete: (_sid: string, _msg: string) => {
-        const text: string = this.resultText.trim();
+        this.clearGuard();
+        const text: string = this.committedText.trim();
         if (this.resolveFn) {
           this.resolveFn(text);
           this.resolveFn = undefined;
           this.rejectFn = undefined;
         }
+        this.shutdownEngine();
       },
       onError: (_sid: string, code: number, msg: string) => {
-        hilog.error(DOMAIN, TAG, 'asr error: %{public}d %{public}s', code, msg);
+        this.clearGuard();
+        const reason: string = `ASR 失败 ${code}: ${msg}`;
+        hilog.error(DOMAIN, TAG, 'asr error: %{public}s', reason);
         if (this.rejectFn) {
-          this.rejectFn(`ASR 失败 ${code}: ${msg}`);
+          this.rejectFn(reason);
           this.resolveFn = undefined;
           this.rejectFn = undefined;
         }
+        this.shutdownEngine();
       }
     };
     this.engine.setListener(listener);
+  }
+
+  private clearGuard(): void {
+    if (this.guardTimer !== 0) {
+      clearTimeout(this.guardTimer);
+      this.guardTimer = 0;
+    }
+  }
+
+  private shutdownEngine(): void {
+    if (this.engine) {
+      try { this.engine.shutdown(); } catch (e) { /* ignore */ }
+      this.engine = undefined;
+    }
   }
 
   // 文件转写：打开 WAV → 跳过 44 字节头 → startListening 启动识别 → 按 1280 字节块 writeAudio → finish → 返回文字
@@ -97,8 +126,9 @@ class _AsrHelperImpl {
     const ok: boolean = await this.ensureEngine();
     if (!ok || !this.engine) {
       throw new Error('语音识别引擎初始化失败（' + this.lastInitErr +
-        '）。多为设备未预置离线中文语音模型：请到系统「设置→语音/输入法/智慧语音」确认中文离线语音识别模型已下载启用；模拟器通常无此模型，需真机验证。');
+        '）。云侧识别需要联网且应用已开通语音识别服务；请确认设备已联网后重试。');
     }
+    this.committedText = '';
     this.resultText = '';
     // 每次转写使用新的会话 ID，避免重复调用时 session 冲突导致 startListening 失败
     this.sessionId = 'asr_' + Date.now().toString() + '_' + Math.floor(Math.random() * 1000).toString();
@@ -109,11 +139,11 @@ class _AsrHelperImpl {
         const stat = fileIo.statSync(wavPath);
         const total: number = stat.size;
         if (total <= WAV_HEADER) {
+          this.clearGuard();
           resolve('');
           return;
         }
-        // 开始识别参数（音频文件转文字模式 recognitionMode:1 = 实时音频转文字，需 writeAudio 喂流）
-        //   recognitionMode:0 = 麦克风实时录音（文件场景不可用，会导致收不到任何结果）
+        // recognitionMode:1 = 实时音频转文字（文件流需 writeAudio 喂入）；maxAudioDuration 放宽到 10 分钟覆盖单题作答
         const audioInfo: speechRecognizer.AudioInfo = {
           audioType: 'pcm',
           sampleRate: 16000,
@@ -122,8 +152,6 @@ class _AsrHelperImpl {
         };
         const extraParam: Record<string, Object> = {
           'recognitionMode': 1,
-          // 最大音频时长（ms）。会话级参数，不传则默认仅 20000ms(20s)，超即报 1002200003；
-          // 长语音模式(引擎已 recognizerMode:'long')上限 8h，这里给 10 分钟余量覆盖单题开口作答。
           'maxAudioDuration': 600000
         };
         const startParams: speechRecognizer.StartParams = {
@@ -165,10 +193,23 @@ class _AsrHelperImpl {
             try { fileIo.closeSync(file.fd); } catch (closeErr) { /* ignore */ }
             // 写完所有音频（或读到 EOF）→ 结束识别，触发 onComplete 返回最终文字
             try { this.engine!.finish(this.sessionId); } catch (e) { /* ignore */ }
+            // 兜底：若 finish 因异常未触发 onComplete，最多再等 GUARD_MS 用已得文字结算，绝不让“转写中”卡死
+            this.clearGuard();
+            this.guardTimer = setTimeout((): void => {
+              this.guardTimer = 0;
+              const partial: string = this.committedText.trim();
+              if (this.resolveFn) {
+                this.resolveFn(partial);
+                this.resolveFn = undefined;
+                this.rejectFn = undefined;
+              }
+              this.shutdownEngine();
+            }, GUARD_MS);
           }
         })();
       } catch (e) {
         const err = e as BusinessError;
+        this.clearGuard();
         hilog.error(DOMAIN, TAG, 'transcribeFile fail: %{public}s', err.message);
         reject(`读取失败: ${err.message}`);
       }
@@ -177,12 +218,8 @@ class _AsrHelperImpl {
 
   // 释放引擎（页面销毁或不再需要时调用）
   release(): void {
-    if (this.engine) {
-      try {
-        this.engine.shutdown();
-      } catch (e) { /* ignore */ }
-      this.engine = undefined;
-    }
+    this.clearGuard();
+    this.shutdownEngine();
   }
 }
 

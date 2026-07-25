@@ -34,12 +34,13 @@ export struct RecorderBar {
 
   // 实时语音转写（语音→文字）：录音时用 speechRecognizer 实时识别，把文字渲染到我们自己可控的 Text 窗口，
   // 保证“输出窗口”一定可见（解决 AICaptionComponent 静默无输出、且拿不到文字字符串的问题）。
-  // 注意：speechRecognizer 的 online 参数语义为 0=在线(云侧) / 1=离线(端侧模型)；此设备未预置离线中文模型，
-  // 所以必须用 0(云侧)，并保证网络可用。
+  // 注意：speechRecognizer 的 online 参数语义为 0=云侧 / 1=离线(端侧模型)；本设备未预置离线中文模型，
+  // 离线模式会“假成功”后卡死（既不 onError 也不 onComplete），所以必须用 0(云侧)，并保证网络可用。
   private asrEngine?: speechRecognizer.SpeechRecognitionEngine;
   private asrSession: string = '';
   private asrListening: boolean = false; // startListening 成功后置 true（onStart 回调），之后才能 writeAudio
   private asrCommitted: string = '';     // 已确认整句（isFinal）累积
+  private asrGuard: number = 0;          // 实时识别兜底定时器（防止异常时卡死）
   @State liveText: string = '';          // 实时识别文字（自己的窗口显示）
   @State asrError: string = '';          // 识别失败原因（可见，便于排查）
   @State captionShown: boolean = false;  // 是否展示实时转写窗口
@@ -403,20 +404,37 @@ export struct RecorderBar {
     const extraParam: Record<string, Object> = { 'locate': 'CN', 'recognizerMode': 'long' };
     const initParams: speechRecognizer.CreateEngineParams = {
       language: 'zh-CN',
-      online: 1,                       // 本 SDK（API 20）仅文档化支持 online:1（离线），设备需预置中文语音模型
+      online: 0,                       // 云侧识别（本设备无离线中文模型，离线模式会卡死）
       extraParams: extraParam
     };
     speechRecognizer.createEngine(initParams, (err: BusinessError, engine: speechRecognizer.SpeechRecognitionEngine): void => {
       if (err || !engine) {
-        this.asrError = '本设备未预置中文语音识别模型，无法自动转写（错误 ' + (err ? (err.code + ':' + err.message) : '空引擎') + '）。请在系统「设置→智慧语音→语音识别」下载启用中文模型，或在下方手动录入转写文字稿。';
+        this.asrError = '语音识别引擎初始化失败（' + (err ? (err.code + ':' + err.message) : '空引擎') + '）。云侧识别需联网且应用已开通语音识别服务；请确认设备已联网后重试，或在下方手动录入转写文字稿。';
         hilog.error(DOMAIN, TAG, 'asr createEngine fail: %{public}s', this.asrError);
         return;
       }
       this.asrEngine = engine;
       this.asrSession = 'live_' + Date.now().toString();
+      // 兜底：若引擎既无 onStart 也无 onError（云侧无响应），8s 后置错误并释放，避免静默卡死
+      this.clearAsrGuard();
+      this.asrGuard = setTimeout((): void => {
+        this.asrGuard = 0;
+        if (!this.asrListening) {
+          this.asrError = '识别启动超时（云侧未响应），请确认网络可用，或手动录入转写文字稿。';
+          if (this.asrEngine) {
+            try { this.asrEngine.shutdown(); } catch (e) { /* ignore */ }
+            this.asrEngine = undefined;
+          }
+          this.asrSession = '';
+          this.asrListening = false;
+        }
+      }, 8000);
       engine.setListener({
         // onStart = startListening 成功！此时才允许 writeAudio（SDK 强约束）。
-        onStart: (_sid: string, _msg: string): void => { this.asrListening = true; },
+        onStart: (_sid: string, _msg: string): void => {
+          this.clearAsrGuard();
+          this.asrListening = true;
+        },
         onEvent: (_sid: string, _code: number, _msg: string): void => { /* 忽略内部事件 */ },
         onResult: (_sid: string, result: speechRecognizer.SpeechRecognitionResult): void => {
           // result.isFinal=true 为整句结束；否则为当前句的中间结果
@@ -428,6 +446,7 @@ export struct RecorderBar {
           }
         },
         onComplete: (_sid: string, _msg: string): void => {
+          this.clearAsrGuard();
           if (this.asrEngine) {
             try { this.asrEngine.shutdown(); } catch (e) { /* ignore */ }
             this.asrEngine = undefined;
@@ -435,6 +454,7 @@ export struct RecorderBar {
           this.asrListening = false;
         },
         onError: (_sid: string, code: number, msg: string): void => {
+          this.clearAsrGuard();
           this.asrError = '识别出错(' + code + '): ' + msg;
           hilog.error(DOMAIN, TAG, 'asr onError: %{public}s', this.asrError);
           if (this.asrEngine) {
@@ -466,8 +486,16 @@ export struct RecorderBar {
     });
   }
 
+  private clearAsrGuard(): void {
+    if (this.asrGuard !== 0) {
+      clearTimeout(this.asrGuard);
+      this.asrGuard = 0;
+    }
+  }
+
   // 停止实时识别：finish 收尾，并把已识别文字存本机（供详情页「我的口述转写」持久化）
   private stopRealtimeAsr(): void {
+    this.clearAsrGuard();
     const eng = this.asrEngine;
     const sid = this.asrSession;
     this.asrEngine = undefined;
