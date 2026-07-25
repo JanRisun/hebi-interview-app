@@ -32,10 +32,9 @@ export struct RecorderBar {
   @State hasTranscript: boolean = false; // 该题目是否已有转写文本
   @State transcriptText: string = '';    // 转写结果（端侧语音识别）
 
-  // 实时语音转写（语音→文字）：录音时用 speechRecognizer 实时识别，把文字渲染到我们自己可控的 Text 窗口，
-  // 保证“输出窗口”一定可见（解决 AICaptionComponent 静默无输出、且拿不到文字字符串的问题）。
-  // 注意：speechRecognizer 的 online 参数语义为 0=云侧 / 1=离线(端侧模型)；本设备未预置离线中文模型，
-  // 离线模式会“假成功”后卡死（既不 onError 也不 onComplete），所以必须用 0(云侧)，并保证网络可用。
+  // 实时语音转写（语音→文字）：录音时用 speechRecognizer 实时识别，文字写入 liveText。
+  // Core Speech Kit 当前仅支持离线识别（online:1），需设备已下载「中文语音识别模型」。
+  // 无模型时 createEngine 会返回错误，asrError 可见并指导用户去系统设置下载。
   private asrEngine?: speechRecognizer.SpeechRecognitionEngine;
   private asrSession: string = '';
   private asrListening: boolean = false; // startListening 成功后置 true（onStart 回调），之后才能 writeAudio
@@ -125,7 +124,7 @@ export struct RecorderBar {
     } catch (e) {
       const msg: string = (e as BusinessError)?.message || (e as Error)?.message || '未知错误';
       hilog.error(DOMAIN, TAG, 'transcribe fail: %{public}s', msg);
-      // 把失败原因也展示在转写区，避免“点了没反应”的错觉
+      // 把失败原因也展示在转写区，避免"点了没反应"的错觉
       this.transcriptText = '转写失败：' + msg;
       this.hasTranscript = true;
     } finally {
@@ -256,7 +255,7 @@ export struct RecorderBar {
     }
   }
 
-  // 统一计时：带守护标志的递归 setTimeout（比 setInterval 更稳，stop 后绝不再排下一跳，杜绝“清不掉/叠加”）
+  // 统一计时：带守护标志的递归 setTimeout（比 setInterval 更稳，stop 后绝不再排下一跳，杜绝"清不掉/叠加"）
   private startTick(kind: 'rec' | 'play'): void {
     this.stopTick();
     this.tickActive = true;
@@ -311,7 +310,7 @@ export struct RecorderBar {
       capturer.on('readData', (buffer: ArrayBuffer): void => {
         if (this.recFile) {
           try {
-            // 写整个 buffer，文件光标自动前移（writeSync 的 offset 在 ArrayBuffer 模式下是“源缓冲区内偏移”，不能当文件位置用）
+            // 写整个 buffer，文件光标自动前移（writeSync 的 offset 在 ArrayBuffer 模式下是"源缓冲区内偏移"，不能当文件位置用）
             const n: number = fileIo.writeSync(this.recFile.fd, buffer);
             this.pcmOffset += n;   // 仅累计真实写入字节数，用于回写 WAV 头 dataSize
             if (firstChunk) {
@@ -404,12 +403,12 @@ export struct RecorderBar {
     const extraParam: Record<string, Object> = { 'locate': 'CN', 'recognizerMode': 'long' };
     const initParams: speechRecognizer.CreateEngineParams = {
       language: 'zh-CN',
-      online: 0,                       // 云侧识别（本设备无离线中文模型，离线模式会卡死）
+      online: 1,                       // Core Speech Kit 当前仅支持离线识别
       extraParams: extraParam
     };
     speechRecognizer.createEngine(initParams, (err: BusinessError, engine: speechRecognizer.SpeechRecognitionEngine): void => {
       if (err || !engine) {
-        this.asrError = '语音识别引擎初始化失败（' + (err ? (err.code + ':' + err.message) : '空引擎') + '）。云侧识别需联网且应用已开通语音识别服务；请确认设备已联网后重试，或在下方手动录入转写文字稿。';
+        this.asrError = '语音识别引擎初始化失败（' + (err ? (err.code + ':' + err.message) : '空引擎') + '）。Core Speech Kit 仅支持离线识别，请到系统「设置→智慧语音→语音识别」下载中文离线模型后重试；或直接在下方手动录入转写文字稿。';
         hilog.error(DOMAIN, TAG, 'asr createEngine fail: %{public}s', this.asrError);
         return;
       }

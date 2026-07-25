@@ -11,8 +11,9 @@
 //   - finish(sessionId) → shutdown()
 //   - onResult 中 result.result 即文字；isFinal=true 为整句结束，据此累积成完整逐字稿。
 //
-// ⚠️ online 取值：本设备未预置离线中文模型，离线(1)模式会“假成功”后卡死（既不 onError 也不 onComplete）。
-//   故统一用 online:0（云侧识别，需联网）。云侧失败会正常走 onError，不会无限转写中。
+// ⚠️ online 取值：Core Speech Kit 当前仅支持离线识别（online:1），不支持云侧。
+//   离线模式需设备已下载「中文语音识别模型」（系统设置→智慧语音→离线识别模型）。
+//   无模型时 createEngine 可能返回空引擎/报错；已加 15s 兜底超时杜绝无限"转写中"。
 import { speechRecognizer } from '@kit.CoreSpeechKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { fileIo } from '@kit.CoreFileKit';
@@ -41,7 +42,8 @@ class _AsrHelperImpl {
   private guardTimer: number = 0;        // 兜底定时器句柄
   private inflight: Promise<string> | null = null;  // 进行中的识别任务（并发去重，杜绝两路调用交叉写引擎）
 
-  // 创建引擎（云侧 long 模式）；已存在直接返回 true。返回 false 多为无网络/云侧服务不可用。
+  // 创建引擎（离线 long 模式，Core Speech Kit 仅支持离线）；已存在直接返回 true。
+  // 返回 false 多在设备未下载/未启用中文语音识别离线模型时发生 → 需要去系统设置下载。
   private async ensureEngine(): Promise<boolean> {
     if (this.engine) return true;
     const extraParam: Record<string, Object> = {
@@ -50,7 +52,7 @@ class _AsrHelperImpl {
     };
     const initParams: speechRecognizer.CreateEngineParams = {
       language: 'zh-CN',
-      online: 0,                 // 0 = 云侧识别（本设备无离线中文模型，离线模式会卡死）
+      online: 1,                 // Core Speech Kit 当前仅支持离线识别
       extraParams: extraParam
     };
     return new Promise<boolean>((resolve) => {
@@ -135,7 +137,7 @@ class _AsrHelperImpl {
     const ok: boolean = await this.ensureEngine();
     if (!ok || !this.engine) {
       throw new Error('语音识别引擎初始化失败（' + this.lastInitErr +
-        '）。云侧识别需要联网且应用已开通语音识别服务；请确认设备已联网后重试。');
+        '）。Core Speech Kit 仅支持离线识别，请到系统「设置→智慧语音→语音识别」下载中文离线模型后重试。');
     }
     this.committedText = '';
     this.resultText = '';
@@ -202,7 +204,7 @@ class _AsrHelperImpl {
             try { fileIo.closeSync(file.fd); } catch (closeErr) { /* ignore */ }
             // 写完所有音频（或读到 EOF）→ 结束识别，触发 onComplete 返回最终文字
             try { this.engine!.finish(this.sessionId); } catch (e) { /* ignore */ }
-            // 兜底：若 finish 因异常未触发 onComplete，最多再等 GUARD_MS 用已得文字结算，绝不让“转写中”卡死
+            // 兜底：若 finish 因异常未触发 onComplete，最多再等 GUARD_MS 用已得文字结算，绝不让"转写中"卡死
             this.clearGuard();
             this.guardTimer = setTimeout((): void => {
               this.guardTimer = 0;

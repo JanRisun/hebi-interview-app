@@ -107,7 +107,7 @@ export struct AudioReviewView {
     this.loadTranscript(p.id, ctx);
   }
 
-  // 加载语音转文字：优先读取作答页已落盘的 rec_<id>.txt；不存在时对录音做一次云侧 ASR（最佳努力，需联网 + 应用开通语音识别服务）
+  // 加载语音转文字：优先读取作答页已落盘的 rec_<id>.txt；不存在时对录音做一次离线 ASR（需设备已下载中文语音识别离线模型）
   private async loadTranscript(id: string, ctx: common.UIAbilityContext): Promise<void> {
     this.transcriptError = '';
     const path: string = ctx.filesDir + '/rec_' + id + '.txt';
@@ -136,13 +136,13 @@ export struct AudioReviewView {
             fileIo.closeSync(fd.fd);
           } catch (e) { /* ignore */ }
         } else {
-          // 识别跑通但无文字（静音 / 模型未识别 / 录音无清晰人声）
-          this.transcriptError = '转写未识别到文字（录音可能为静音或非中文），请在「开口自测」页手动录入转写稿后再来查看。';
+          // 识别跑通但无文字（静音 / 离线模型未安装 / 录音无清晰人声）
+          this.transcriptError = '转写未识别到文字（可能离线中文模型未下载或录音为静音），请到系统「设置→智慧语音→语音识别」确认已下载中文离线模型，或在「开口自测」页手动录入转写稿。';
         }
       } catch (e) {
         const msg: string = (e as BusinessError)?.message || (e as Error)?.message || '未知错误';
         hilog.error(DOMAIN, TAG, 'lazy transcribe fail: %{public}s', msg);
-        this.transcriptError = '转写失败：' + msg + '（请确认设备联网，且应用已开通云侧语音识别服务，或在「开口自测」页手动录入转写稿）';
+        this.transcriptError = '转写失败：' + msg + '（Core Speech Kit 仅支持离线识别；请到系统「设置→智慧语音→语音识别」下载中文离线模型后重试，或在「开口自测」页手动录入转写稿）';
       } finally {
         this.transcribing = false;
       }
