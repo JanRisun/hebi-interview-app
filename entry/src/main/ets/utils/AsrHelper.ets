@@ -39,6 +39,7 @@ class _AsrHelperImpl {
   private resolveFn: ((text: string) => void) | undefined = undefined;
   private rejectFn: ((err: string) => void) | undefined = undefined;
   private guardTimer: number = 0;        // 兜底定时器句柄
+  private inflight: Promise<string> | null = null;  // 进行中的识别任务（并发去重，杜绝两路调用交叉写引擎）
 
   // 创建引擎（云侧 long 模式）；已存在直接返回 true。返回 false 多为无网络/云侧服务不可用。
   private async ensureEngine(): Promise<boolean> {
@@ -123,6 +124,14 @@ class _AsrHelperImpl {
 
   // 文件转写：打开 WAV → 跳过 44 字节头 → startListening 启动识别 → 按 1280 字节块 writeAudio → finish → 返回文字
   async transcribeFile(wavPath: string): Promise<string> {
+    // 并发去重：录音结束跳点评时，AudioAnswer 的转写与点评页兜底可能同时调用，共用同一 Promise 结果，
+    // 避免两个 startListening/writeAudio 在同一引擎上交叉导致识别混乱或卡死
+    if (this.inflight) return this.inflight;
+    this.inflight = this.doTranscribe(wavPath).finally((): void => { this.inflight = null; });
+    return this.inflight;
+  }
+
+  private async doTranscribe(wavPath: string): Promise<string> {
     const ok: boolean = await this.ensureEngine();
     if (!ok || !this.engine) {
       throw new Error('语音识别引擎初始化失败（' + this.lastInitErr +

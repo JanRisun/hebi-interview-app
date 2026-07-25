@@ -14,6 +14,7 @@ import { promptAction } from '@kit.ArkUI';
 import { preferences } from '@kit.ArkData';
 import abilityAccessCtrl from '@ohos.abilityAccessCtrl';
 import bundleManager from '@ohos.bundle.bundleManager';
+import { AsrHelper } from '../utils/AsrHelper';
 
 const DOMAIN: number = 0x0001;
 const TAG: string = 'AudioAnswer';
@@ -295,6 +296,34 @@ export struct AudioAnswerView {
       this.saveAnswerRecord();
       this.recordFinished = true;
       this.initPlayback(this.recPath);
+      // 录音结束后立即跑一次云侧语音转写，把结果写到 rec_<id>.txt（与 RecorderBar 命名一致），
+      // 这样点评页 loadTranscript 能直接读到文字；若失败则不写 txt，由点评页兜底再试一次并展示错误原因。
+      this.transcribeAndSave();
+    }
+  }
+
+  // 录音结束 → 云侧语音转写 → 写入 filesDir/rec_<id>.txt。失败/无结果不写文件，不阻塞 UI。
+  private async transcribeAndSave(): Promise<void> {
+    if (!this.recPath || !this.question) return;
+    const id: string = this.question.id;
+    const txtPath: string = (getContext(this) as common.UIAbilityContext).filesDir + '/rec_' + id + '.txt';
+    try {
+      const text: string = await AsrHelper.transcribeFile(this.recPath);
+      if (!text || text.length === 0) return;
+      try {
+        const fd = fileIo.openSync(
+          txtPath,
+          fileIo.OpenMode.READ_WRITE | fileIo.OpenMode.CREATE | fileIo.OpenMode.TRUNC
+        );
+        fileIo.writeSync(fd.fd, text);
+        fileIo.closeSync(fd.fd);
+        hilog.info(DOMAIN, TAG, 'transcribeAndSave 写入 %{public}d 字', text.length);
+      } catch (e) {
+        hilog.error(DOMAIN, TAG, 'transcribeAndSave 写txt失败');
+      }
+    } catch (e) {
+      const msg: string = (e as BusinessError)?.message || (e as Error)?.message || '未知错误';
+      hilog.error(DOMAIN, TAG, 'transcribeAndSave 转写失败: %{public}s', msg);
     }
   }
 

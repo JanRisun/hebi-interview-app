@@ -37,6 +37,7 @@ export struct AudioReviewView {
   @State transcriptText: string = '';                   // 语音转文字结果
   @State hasTranscript: boolean = false;                 // 是否存在转写文本
   @State transcribing: boolean = false;                  // 是否正在端侧生成转写（最佳努力）
+  @State transcriptError: string = '';                   // 转写失败原因（用于在页面上提示，避免静默"暂无转写"）
   @State showTranscriptSheet: boolean = false;           // 「查看更多」弹层是否展开
   @State activeTab: number = 0;                          // 当前高亮的 tab
   @State sectionOffsets: number[] = [0, 0, 0, 0, 0, 0];  // 6 个小节相对 Scroll 内部的 yOffset
@@ -106,8 +107,9 @@ export struct AudioReviewView {
     this.loadTranscript(p.id, ctx);
   }
 
-  // 加载语音转文字：优先读取作答页已落盘的 rec_<id>.txt；不存在时对录音做一次端侧 ASR（最佳努力，需设备预置中文模型）
+  // 加载语音转文字：优先读取作答页已落盘的 rec_<id>.txt；不存在时对录音做一次云侧 ASR（最佳努力，需联网 + 应用开通语音识别服务）
   private async loadTranscript(id: string, ctx: common.UIAbilityContext): Promise<void> {
+    this.transcriptError = '';
     const path: string = ctx.filesDir + '/rec_' + id + '.txt';
     let text: string = '';
     try {
@@ -120,7 +122,7 @@ export struct AudioReviewView {
       this.hasTranscript = true;
       return;
     }
-    // 文件不存在 → 最佳努力：对录音做一次端侧语音转写
+    // 文件不存在或为空 → 最佳努力：对录音做一次云侧语音转写
     if (this.record && this.record.audioPath) {
       this.transcribing = true;
       try {
@@ -133,10 +135,14 @@ export struct AudioReviewView {
             fileIo.writeSync(fd.fd, result);
             fileIo.closeSync(fd.fd);
           } catch (e) { /* ignore */ }
+        } else {
+          // 识别跑通但无文字（静音 / 模型未识别 / 录音无清晰人声）
+          this.transcriptError = '转写未识别到文字（录音可能为静音或非中文），请在「开口自测」页手动录入转写稿后再来查看。';
         }
       } catch (e) {
         const msg: string = (e as BusinessError)?.message || (e as Error)?.message || '未知错误';
         hilog.error(DOMAIN, TAG, 'lazy transcribe fail: %{public}s', msg);
+        this.transcriptError = '转写失败：' + msg + '（请确认设备联网，且应用已开通云侧语音识别服务，或在「开口自测」页手动录入转写稿）';
       } finally {
         this.transcribing = false;
       }
@@ -524,6 +530,14 @@ export struct AudioReviewView {
         Text('转写生成中…')
           .fontSize(FONT.caption)
           .fontColor($r('app.color.text_secondary'))
+          .margin({ top: SPACE.sm })
+      } else if (this.transcriptError) {
+        // 显示具体失败原因（云侧未开通 / 无网络 / 引擎初始化失败 / 无识别结果），避免静默"暂无"
+        Text(this.transcriptError)
+          .fontSize(FONT.caption)
+          .fontColor($r('app.color.danger'))
+          .lineHeight(20)
+          .width('100%')
           .margin({ top: SPACE.sm })
       } else {
         Text('暂无转写文字')
