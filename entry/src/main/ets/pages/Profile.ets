@@ -101,6 +101,10 @@ export struct ProfileView {
     this.pageStack.pushPathByName('StudyPlan', {} as Record<string, Object>);
   }
 
+  private onAICaption(): void {
+    this.pageStack.pushPathByName('AICaptionDemo', {} as Record<string, Object>);
+  }
+
   // 用户信息卡：头像 + 昵称 + 地区，作为个人中心顶部内容，紧贴标题栏
   @Builder userCard() {
     Row() {
@@ -223,6 +227,7 @@ export struct ProfileView {
           this.entryRow('📝', $r('app.color.brand_light'), $r('app.color.brand'), '我的学习记录', `已自评 ${this.rated.length} 道`, () => this.onStudyRecord())
           this.entryRow('🎯', $r('app.color.brand_light'), $r('app.color.info'), '我的真题演练记录', `已完成 ${this.sessions.length} 套`, () => this.onExamRecord())
           this.entryRow('📅', $r('app.color.brand_light'), $r('app.color.brand'), '备考计划', '考试倒计时 + 复习任务清单', () => this.onStudyPlan())
+          this.entryRow('💬', $r('app.color.accent_soft'), $r('app.color.accent'), 'AI 实时字幕', '对麦克风说话，实时显示识别文字', () => this.onAICaption())
         }
         .width('92%')
         .alignItems(HorizontalAlign.Start)

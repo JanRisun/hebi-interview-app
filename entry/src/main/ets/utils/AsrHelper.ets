@@ -137,7 +137,7 @@ class _AsrHelperImpl {
     const ok: boolean = await this.ensureEngine();
     if (!ok || !this.engine) {
       throw new Error('语音识别引擎初始化失败（' + this.lastInitErr +
-        '）。Core Speech Kit 仅支持离线识别，请到系统「设置→智慧语音→语音识别」下载中文离线模型后重试。');
+        '）。Core Speech Kit 仅支持离线识别；若已在系统「设置→智慧语音」下载中文离线模型仍失败，多为本机缺失离线识别运行时（libhiai_ir_infershape.so，与系统镜像/小艺相关）。可改用「开口自测」页手动录入转写稿，或更换离线能力正常的设备重试。');
     }
     this.committedText = '';
     this.resultText = '';

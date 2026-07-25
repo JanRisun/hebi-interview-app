@@ -5,7 +5,7 @@ import { DataStore } from '../model/DataStore';
 import { AnswerRecord, Question } from '../model/Types';
 import { FONT, RADIUS, SPACE, SAFE_AREA_TYPES, SAFE_AREA_EDGES } from '../utils/Theme';
 import { BackHeader } from '../utils/BackHeader';
-import { AsrHelper } from '../utils/AsrHelper';
+import { CloudAsrHelper } from '../utils/CloudAsrHelper';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { media } from '@kit.MediaKit';
@@ -107,7 +107,7 @@ export struct AudioReviewView {
     this.loadTranscript(p.id, ctx);
   }
 
-  // 加载语音转文字：优先读取作答页已落盘的 rec_<id>.txt；不存在时对录音做一次离线 ASR（需设备已下载中文语音识别离线模型）
+  // 加载语音转文字：优先读取作答页已落盘的 rec_<id>.txt；不存在时对录音做一次云侧 ASR（讯飞 IAT，需联网与正确密钥）
   private async loadTranscript(id: string, ctx: common.UIAbilityContext): Promise<void> {
     this.transcriptError = '';
     const path: string = ctx.filesDir + '/rec_' + id + '.txt';
@@ -126,7 +126,7 @@ export struct AudioReviewView {
     if (this.record && this.record.audioPath) {
       this.transcribing = true;
       try {
-        const result: string = await AsrHelper.transcribeFile(this.record.audioPath);
+        const result: string = await CloudAsrHelper.transcribe(this.record.audioPath);
         if (result && result.length > 0) {
           this.transcriptText = result;
           this.hasTranscript = true;
@@ -136,13 +136,13 @@ export struct AudioReviewView {
             fileIo.closeSync(fd.fd);
           } catch (e) { /* ignore */ }
         } else {
-          // 识别跑通但无文字（静音 / 离线模型未安装 / 录音无清晰人声）
-          this.transcriptError = '转写未识别到文字（可能离线中文模型未下载或录音为静音），请到系统「设置→智慧语音→语音识别」确认已下载中文离线模型，或在「开口自测」页手动录入转写稿。';
+          // 识别跑通但无文字（静音 / 录音无清晰人声）
+          this.transcriptError = '转写未识别到文字（可能录音为静音或无人声），请重新录制，或在「开口自测」页手动录入转写稿。';
         }
       } catch (e) {
         const msg: string = (e as BusinessError)?.message || (e as Error)?.message || '未知错误';
         hilog.error(DOMAIN, TAG, 'lazy transcribe fail: %{public}s', msg);
-        this.transcriptError = '转写失败：' + msg + '（Core Speech Kit 仅支持离线识别；请到系统「设置→智慧语音→语音识别」下载中文离线模型后重试，或在「开口自测」页手动录入转写稿）';
+        this.transcriptError = '转写失败：' + msg + '（云侧语音识别需联网且讯飞密钥正确；若提示鉴权失败，请检查 CloudAsrHelper.ets 顶部 APPID/APIKey/APISecret。可在「开口自测」页手动录入转写稿）';
       } finally {
         this.transcribing = false;
       }

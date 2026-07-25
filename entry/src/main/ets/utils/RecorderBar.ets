@@ -408,18 +408,18 @@ export struct RecorderBar {
     };
     speechRecognizer.createEngine(initParams, (err: BusinessError, engine: speechRecognizer.SpeechRecognitionEngine): void => {
       if (err || !engine) {
-        this.asrError = '语音识别引擎初始化失败（' + (err ? (err.code + ':' + err.message) : '空引擎') + '）。Core Speech Kit 仅支持离线识别，请到系统「设置→智慧语音→语音识别」下载中文离线模型后重试；或直接在下方手动录入转写文字稿。';
+        this.asrError = '语音识别引擎初始化失败（' + (err ? (err.code + ':' + err.message) : '空引擎') + '）。Core Speech Kit 仅支持离线识别；若已下载中文离线模型仍失败，多为本机缺失离线识别运行时（libhiai_ir_infershape.so）。可直接在下方手动录入转写文字稿，或更换设备重试。';
         hilog.error(DOMAIN, TAG, 'asr createEngine fail: %{public}s', this.asrError);
         return;
       }
       this.asrEngine = engine;
       this.asrSession = 'live_' + Date.now().toString();
-      // 兜底：若引擎既无 onStart 也无 onError（云侧无响应），8s 后置错误并释放，避免静默卡死
+      // 兜底：若引擎既无 onStart 也无 onError（离线识别运行时未就绪），8s 后置错误并释放，避免静默卡死
       this.clearAsrGuard();
       this.asrGuard = setTimeout((): void => {
         this.asrGuard = 0;
         if (!this.asrListening) {
-          this.asrError = '识别启动超时（云侧未响应），请确认网络可用，或手动录入转写文字稿。';
+          this.asrError = '离线识别启动超时（设备离线识别运行时未就绪或缺失），可尝试在系统「设置→智慧语音」确认中文离线模型已启用，或直接手动录入转写文字稿、更换设备重试。';
           if (this.asrEngine) {
             try { this.asrEngine.shutdown(); } catch (e) { /* ignore */ }
             this.asrEngine = undefined;

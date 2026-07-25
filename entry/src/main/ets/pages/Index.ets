@@ -24,6 +24,7 @@ import { ExamRecord } from './ExamRecord';
 import { StudyPlan } from './StudyPlan';
 import { AudioAnswerView } from './AudioAnswer';
 import { AudioReviewView } from './AudioReview';
+import { AICaptionDemoView } from './AICaptionDemo';
 import { VideoAnswerView } from './VideoAnswer';
 import { VideoReviewView } from './VideoReview';
 import { FONT, SPACE, SAFE_AREA_TYPES, SAFE_AREA_EDGES } from '../utils/Theme';
@@ -417,6 +418,16 @@ struct Index {
     } else if (name === 'AudioReview') {
       NavDestination() {
         AudioReviewView({ params: param })
+      }.hideTitleBar(true)
+      .onAppear(() => {
+        applyStatusBar('theme');
+      })
+      .onDisAppear(() => {
+        applyStatusBar('brand');
+      })
+    } else if (name === 'AICaptionDemo') {
+      NavDestination() {
+        AICaptionDemoView()
       }.hideTitleBar(true)
       .onAppear(() => {
         applyStatusBar('theme');

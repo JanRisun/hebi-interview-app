@@ -14,7 +14,8 @@ import { promptAction } from '@kit.ArkUI';
 import { preferences } from '@kit.ArkData';
 import abilityAccessCtrl from '@ohos.abilityAccessCtrl';
 import bundleManager from '@ohos.bundle.bundleManager';
-import { AsrHelper } from '../utils/AsrHelper';
+import { CloudAsrHelper } from '../utils/CloudAsrHelper';
+import { AICaptionComponent, AICaptionController, AICaptionOptions } from '@kit.SpeechKit';
 
 const DOMAIN: number = 0x0001;
 const TAG: string = 'AudioAnswer';
@@ -36,6 +37,8 @@ export struct AudioAnswerView {
   @State recording: boolean = false;          // 是否正在录音
   @State amplitudes: number[] = [];           // 最近若干帧音频峰值振幅（0~1），用于波形可视化
   @State recordFinished: boolean = false;     // 录制是否完成（完成显示回放 + 操作按钮）
+  @State transcribeLoading: boolean = false;    // 云侧转写是否进行中（录音后）
+  @State transcriptPreview: string = '';        // 云侧转写结果预览（录音页简短展示）
   @State isPlaying: boolean = false;          // 是否正在回放
   @State playbackCompleted: boolean = false;  // 是否已播完（用于显示重新播放图标）
   @State playbackProgress: number = 0;         // 回放进度（毫秒）
@@ -56,15 +59,38 @@ export struct AudioAnswerView {
   private playFile: fileIo.File | undefined = undefined; // 回放打开的文件句柄（fdSrc 需持有一个打开的 fd）
   private pendingPlay: boolean = false;                  // 尚未 prepared 时用户点播放，挂起待 prepared 后自动播放
 
+  // AI 实时字幕（SpeechKit AICaption）：录音时把 PCM 喂给控制器，组件自动渲染字幕
+  private captionController: AICaptionController = new AICaptionController();
+  private captionOption?: AICaptionOptions;
+  @State captionShown: boolean = false;        // 录音态：控制字幕组件是否可见
+  @State captionError: string = '';            // 字幕引擎报错（如本机不支持），用于降级提示
+  private captionReady: boolean = false;       // 引擎 onPrepared 后才开始喂流
+
   // 计时器句柄
   private thinkTimer: number = 0;
   private recTimer: number = 0;
+
+  // 云侧转写任务的 Promise（供提交点评前等待其完成）
+  private transcribePromise: Promise<void> = Promise.resolve();
 
   @StorageProp('safeTop') safeTop: number = 0;
   @StorageProp('safeBottom') safeBottom: number = 0;
   @Consume pageStack: NavPathStack;
 
   aboutToAppear(): void {
+    // 初始化 AI 字幕控制器（录音时再把 PCM 喂给它即可）
+    this.captionOption = {
+      initialOpacity: 0.85,
+      onPrepared: (): void => {
+        hilog.info(DOMAIN, TAG, 'AICaption onPrepared');
+        this.captionReady = true;
+      },
+      onError: (error: BusinessError): void => {
+        const msg: string = `(${error.code}) ${error.message}`;
+        hilog.error(DOMAIN, TAG, 'AICaption error: %{public}s', msg);
+        this.captionError = msg;
+      }
+    };
     const p = (this.params ?? {}) as Record<string, Object>;
     const id: string = (p['id'] as string) ?? '';
     const ctx = getContext(this) as common.UIAbilityContext;
@@ -241,9 +267,14 @@ export struct AudioAnswerView {
           if (next.length > 40) next.splice(0, next.length - 40);
           this.amplitudes = next;
         } catch (e) { /* ignore */ }
+        // 把本帧 PCM 喂给 AI 字幕控制器，实现录音时同步字幕
+        this.feedCaption(copied);
       });
       await capturer.start();
       this.recording = true;
+      this.captionShown = true;
+      this.captionReady = false;
+      this.captionError = '';
       this.recSec = 0;
       this.startRecTimer();
     } catch (e) {
@@ -289,6 +320,8 @@ export struct AudioAnswerView {
       hilog.error(DOMAIN, TAG, 'stopRecording close fail: %{public}s', err.message);
     }
     this.recording = false;
+    this.captionShown = false;
+    this.captionReady = false;
     if (this.recorded) {
       const dataSize2: number = Math.max(0, this.pcmOffset - 44);
       const byteRate: number = 16000 * 1 * 16 / 8;
@@ -302,14 +335,21 @@ export struct AudioAnswerView {
     }
   }
 
-  // 录音结束 → 云侧语音转写 → 写入 filesDir/rec_<id>.txt。失败/无结果不写文件，不阻塞 UI。
-  private async transcribeAndSave(): Promise<void> {
+  // 录音结束 → 启动云侧语音转写（不阻塞 UI），保存 Promise 供提交点评前等待其完成
+  private transcribeAndSave(): void {
+    this.transcribePromise = this.transcribeNow();
+  }
+
+  // 实际转写逻辑：写入 filesDir/rec_<id>.txt。失败/无结果不写文件，不阻塞 UI。
+  private async transcribeNow(): Promise<void> {
     if (!this.recPath || !this.question) return;
     const id: string = this.question.id;
     const txtPath: string = (getContext(this) as common.UIAbilityContext).filesDir + '/rec_' + id + '.txt';
+    this.transcribeLoading = true;
     try {
-      const text: string = await AsrHelper.transcribeFile(this.recPath);
+      const text: string = await CloudAsrHelper.transcribe(this.recPath);
       if (!text || text.length === 0) return;
+      this.transcriptPreview = text;
       try {
         const fd = fileIo.openSync(
           txtPath,
@@ -317,13 +357,15 @@ export struct AudioAnswerView {
         );
         fileIo.writeSync(fd.fd, text);
         fileIo.closeSync(fd.fd);
-        hilog.info(DOMAIN, TAG, 'transcribeAndSave 写入 %{public}d 字', text.length);
+        hilog.info(DOMAIN, TAG, 'transcribeNow 写入 %{public}d 字', text.length);
       } catch (e) {
-        hilog.error(DOMAIN, TAG, 'transcribeAndSave 写txt失败');
+        hilog.error(DOMAIN, TAG, 'transcribeNow 写txt失败');
       }
     } catch (e) {
       const msg: string = (e as BusinessError)?.message || (e as Error)?.message || '未知错误';
-      hilog.error(DOMAIN, TAG, 'transcribeAndSave 转写失败: %{public}s', msg);
+      hilog.error(DOMAIN, TAG, 'transcribeNow 转写失败: %{public}s', msg);
+    } finally {
+      this.transcribeLoading = false;
     }
   }
 
@@ -460,6 +502,7 @@ export struct AudioAnswerView {
   }
 
   // 提交点评：跳转到答题点评页（AI 分析结果页面），传入题目 id 用于回显题目内容
+  // 不等待云侧转写：后台转写继续，点评页会先尝试读落盘 txt；若无则由其云侧 fallback 兜底
   private submitReview(): void {
     const id: string = this.question ? this.question.id : '';
     const params: AudioReviewParam = {
@@ -541,6 +584,23 @@ export struct AudioAnswerView {
     const m: number = Math.floor(s / 60);
     const ss: number = s % 60;
     return m + ':' + (ss < 10 ? '0' + ss : '' + ss);
+  }
+
+  // 把一帧 PCM 喂给 AI 字幕控制器（按 640 字节小块写入，与识别引擎安全块大小一致）
+  private feedCaption(frame: ArrayBuffer): void {
+    if (!this.captionShown || !this.captionReady || !this.captionController) return;
+    if (!frame || frame.byteLength === 0) return;
+    try {
+      const bytes: Uint8Array = new Uint8Array(frame);
+      const CHUNK: number = 640;
+      for (let off: number = 0; off < bytes.byteLength; off += CHUNK) {
+        const end: number = Math.min(off + CHUNK, bytes.byteLength);
+        this.captionController.writeAudio({ data: bytes.slice(off, end) });
+      }
+    } catch (e) {
+      const ce = e as BusinessError;
+      hilog.error(DOMAIN, TAG, 'caption writeAudio fail: %{public}s', ce.message);
+    }
   }
 
   build() {
@@ -745,6 +805,45 @@ export struct AudioAnswerView {
           .alignItems(VerticalAlign.Center)
           .margin({ top: SPACE.md })
 
+          // 语音转写预览：录音结束后由云侧识别，等转写完成显示；未就绪显示加载态
+          if (this.transcribeLoading) {
+            Row() {
+              Text('⏳')
+                .fontSize(14)
+                .margin({ right: SPACE.sm })
+              Text('AI 转写生成中…')
+                .fontSize(FONT.bodySm)
+                .fontColor($r('app.color.text_secondary'))
+            }
+            .width('92%')
+            .padding({ left: SPACE.md, right: SPACE.md, top: SPACE.sm, bottom: SPACE.sm })
+            .backgroundColor($r('app.color.surface'))
+            .borderRadius(RADIUS.sm)
+            .margin({ top: SPACE.md })
+            .alignItems(VerticalAlign.Center)
+          } else if (this.transcriptPreview) {
+            Column() {
+              Text('语音转文字')
+                .fontSize(FONT.caption)
+                .fontColor($r('app.color.text_secondary'))
+                .alignSelf(ItemAlign.Start)
+                .margin({ bottom: 4 })
+              Text(this.transcriptPreview)
+                .fontSize(FONT.body)
+                .fontColor($r('app.color.text_body'))
+                .lineHeight(22)
+                .maxLines(2)
+                .textOverflow({ overflow: TextOverflow.Ellipsis })
+                .width('100%')
+            }
+            .width('92%')
+            .padding({ left: SPACE.md, right: SPACE.md, top: SPACE.md, bottom: SPACE.md })
+            .backgroundColor($r('app.color.surface'))
+            .borderRadius(RADIUS.md)
+            .margin({ top: SPACE.md })
+            .alignItems(HorizontalAlign.Start)
+          }
+
           // AI 点评提示
           Row() {
             Text('ⓘ')
@@ -800,6 +899,7 @@ export struct AudioAnswerView {
       } else {
         // 思考时间行（未录制时）/ 实时波形（录制中）
         if (this.recording) {
+          // AI 实时字幕：本机离线识别运行时缺失，先不渲染 AICaptionComponent（保留 controller/options，后续机型可用时打开）
           // 实时音频波形：按振幅高低渲染竖条，居中显示
           Row() {
             ForEach(this.amplitudes, (amp: number) => {
