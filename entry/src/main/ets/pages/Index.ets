@@ -25,6 +25,7 @@ import { StudyPlan } from './StudyPlan';
 import { AudioAnswerView } from './AudioAnswer';
 import { AudioReviewView } from './AudioReview';
 import { AICaptionDemoView } from './AICaptionDemo';
+import { SettingsView } from './Settings';
 import { VideoAnswerView } from './VideoAnswer';
 import { VideoReviewView } from './VideoReview';
 import { FONT, SPACE, SAFE_AREA_TYPES, SAFE_AREA_EDGES } from '../utils/Theme';
@@ -279,6 +280,8 @@ struct Index {
 
   @StorageProp('safeTop') safeTop: number = 0;
   @StorageProp('safeBottom') safeBottom: number = 0;
+  // 订阅字号变化，触发本常驻根组件（Tab 标签等）重渲染
+  @StorageProp('fontScale') _fs: number = 1;
 
   // 路由表：routeName -> NavDestination 组件（参数经 routeMap 的 param 透传）
   // 子页多为浅色背景（BackHeader），进入时状态栏跟随主题；退出回到品牌主页恢复白字。
@@ -435,6 +438,12 @@ struct Index {
       .onDisAppear(() => {
         applyStatusBar('brand');
       })
+    } else if (name === 'Settings') {
+      NavDestination() {
+        SettingsView()
+      }
+      .onAppear(() => { applyStatusBar('theme'); })
+      .onDisAppear(() => { applyStatusBar('brand'); })
     }
   }
 

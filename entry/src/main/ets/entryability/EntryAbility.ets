@@ -8,6 +8,7 @@ import { FavStore } from '../utils/FavStore';
 import { UserTagStore } from '../utils/UserTagStore';
 import { ensureReminder } from '../utils/ReminderHelper';
 import { registerWindow, applyStatusBar, reapplyStatusBar } from '../utils/StatusBar';
+import { initSettings, applyTheme } from '../utils/SettingsStore';
 
 const DOMAIN: number = 0x0000;
 const TAG: string = 'InterviewPrep';
@@ -22,6 +23,8 @@ export default class EntryAbility extends UIAbility {
     AppStorage.setOrCreate('launchTarget', launchTarget);
     // 记录系统深浅色模式到 AppStorage，供页面在 Token 自动切换之外参考
     AppStorage.setOrCreate('currentColorMode', this.context.config.colorMode);
+    // 初始化全局设置（主题 / 字号），同步到 AppStorage 供各页面读取
+    initSettings(this.context as common.UIAbilityContext);
     hilog.info(DOMAIN, TAG, '%{public}s', 'Ability onCreate');
     // 预加载数据、收藏存储与用户标签存储
     DataStore.load(this.context)
@@ -64,6 +67,8 @@ export default class EntryAbility extends UIAbility {
         const win: window.Window = windowStage.getMainWindowSync();
         // 缓存主窗口，供状态栏图标色管理（utils/StatusBar）调用
         registerWindow(win);
+        // 应用已保存的主题模式（浅色 / 深色 / 跟随系统），需主窗口就绪后设置
+        applyTheme(this.context as common.UIAbilityContext);
         // 沉浸式：窗口全屏，让页面背景延伸到状态栏 / 底部导航手势区
         // （各页根容器配合 expandSafeArea 将内容避让到安全区内，仅背景延伸）
         win.setWindowLayoutFullScreen(true).catch((e: BusinessError) => {

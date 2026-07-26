@@ -38,14 +38,21 @@ interface RadiusTokens {
   xl: number;
 }
 
-export const FONT: FontTokens = {
-  display: 20,
-  title: 18,
-  body: 16,
-  bodySm: 14,
-  caption: 12,
-  mini: 11
-};
+// 字号支持应用内「文字大小」设置：FONT 各档位改为 getter，实时读取 AppStorage('fontScale')，
+// 由各页面通过 @StorageProp('fontScale') 订阅变更并触发重渲染（见 Index / Profile 等常驻 Tab）。
+class FontScale {
+  private get scale(): number {
+    const v: number | undefined = AppStorage.get<number>('fontScale');
+    return (v && v > 0) ? v : 1;
+  }
+  get display(): number { return 20 * this.scale; }
+  get title(): number { return 18 * this.scale; }
+  get body(): number { return 16 * this.scale; }
+  get bodySm(): number { return 14 * this.scale; }
+  get caption(): number { return 12 * this.scale; }
+  get mini(): number { return 11 * this.scale; }
+}
+export const FONT: FontScale = new FontScale();
 
 export const SPACE: SpaceTokens = {
   xs: 4,

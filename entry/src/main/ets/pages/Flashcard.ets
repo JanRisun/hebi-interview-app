@@ -17,6 +17,8 @@ export struct FlashcardView {
   @State idx: number = 0;
   @State flipped: boolean = false;   // 翻转状态：false=正面(要点) true=背面(详解)
   @Consume pageStack: NavPathStack;
+  // 订阅字号变化，触发本常驻 Tab 重渲染（FONT getter 实时读取 AppStorage('fontScale')）
+  @StorageProp('fontScale') _fs: number = 1;
 
   aboutToAppear(): void {
     DataStore.load(getContext(this) as common.UIAbilityContext).then(() => {

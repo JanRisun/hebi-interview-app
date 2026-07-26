@@ -19,6 +19,8 @@ export struct QuestionBankView {
   private bankFilters: string[] = ['全部', '真题', '母题'];
   private listScroller: Scroller = new Scroller(); // 列表滚动控制器，用于切换筛选/搜索时回到顶部
   @Consume pageStack: NavPathStack;
+  // 订阅字号变化，触发本常驻 Tab 重渲染（FONT getter 实时读取 AppStorage('fontScale')）
+  @StorageProp('fontScale') _fs: number = 1;
 
   aboutToAppear(): void {
     DataStore.load(getContext(this) as common.UIAbilityContext).then((d: AppData) => {

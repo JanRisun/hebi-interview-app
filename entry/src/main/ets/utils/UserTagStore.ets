@@ -70,6 +70,13 @@ export class UserTagStore {
     return ids.filter((id: string): boolean => (UserTagStore.cache[id]?.length ?? 0) > 0).length;
   }
 
+  // 清空全部用户自定义标签（设置页「清除我的标记」调用），并通知全局刷新
+  static async clearAll(): Promise<void> {
+    UserTagStore.cache = {};
+    await UserTagStore.persist();
+    UserTagStore.notifyChange();
+  }
+
   // 全部用户自定义标签（去重、排序），用于筛选条
   static async allTags(): Promise<string[]> {
     const set: Set<string> = new Set<string>();

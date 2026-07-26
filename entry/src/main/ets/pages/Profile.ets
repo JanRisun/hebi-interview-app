@@ -105,6 +105,10 @@ export struct ProfileView {
     this.pageStack.pushPathByName('AICaptionDemo', {} as Record<string, Object>);
   }
 
+  private onSettings(): void {
+    this.pageStack.pushPathByName('Settings', {} as Record<string, Object>);
+  }
+
   // 用户信息卡：头像 + 昵称 + 地区，作为个人中心顶部内容，紧贴标题栏
   @Builder userCard() {
     Row() {
@@ -186,6 +190,8 @@ export struct ProfileView {
 
   @StorageProp('safeTop') safeTop: number = 0;
   @StorageProp('safeBottom') safeBottom: number = 0;
+  // 订阅字号变化，触发本常驻 Tab 重渲染（FONT getter 实时读取 AppStorage('fontScale')）
+  @StorageProp('fontScale') _fs: number = 1;
 
   build() {
     Column() {
@@ -228,6 +234,8 @@ export struct ProfileView {
           this.entryRow('🎯', $r('app.color.brand_light'), $r('app.color.info'), '我的真题演练记录', `已完成 ${this.sessions.length} 套`, () => this.onExamRecord())
           this.entryRow('📅', $r('app.color.brand_light'), $r('app.color.brand'), '备考计划', '考试倒计时 + 复习任务清单', () => this.onStudyPlan())
           this.entryRow('💬', $r('app.color.accent_soft'), $r('app.color.accent'), 'AI 实时字幕', '对麦克风说话，实时显示识别文字', () => this.onAICaption())
+          this.entryRow('⚙️', $r('app.color.brand_light'), $r('app.color.brand'), '设置',
+            '外观 · 文字大小 · 备考提醒', () => this.onSettings())
         }
         .width('92%')
         .alignItems(HorizontalAlign.Start)
