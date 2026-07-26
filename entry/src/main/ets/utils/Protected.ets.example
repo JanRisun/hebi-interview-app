@@ -1,0 +1,29 @@
+// Protected.ets.example — 密钥占位模板（可入库）
+//
+// 用法：
+//   git clone 后，将本文件复制为同目录下的 Protected.ets，并填入真实密钥：
+//     cp entry/src/main/ets/utils/Protected.ets.example entry/src/main/ets/utils/Protected.ets
+//   （Protected.ets 已被 .gitignore 排除，请勿提交明文密钥）
+//
+// 所有值为 'YOUR_*' 占位符，仅供编译通过；运行时未配置会走相应的降级逻辑。
+// 真实密钥到讯飞控制台获取（应用 a865969a）：
+//   https://console.xfyun.cn
+//   - 「语音听写」服务：APIKey / APISecret（IAT）
+//   - 「星火认知大模型」服务：APIKey / APISecret（Spark，与 IAT 共用同一套）
+//   - 「录音文件转写」服务：secretKey（已弃用，仅供回退）
+//
+// 变量命名以 PROT_ 前缀导出，由各 helper 用别名映射回原名。
+
+// 应用 APPID（语音听写 / 星火共用同一应用）
+export const PROT_APP_ID: string = 'YOUR_APP_ID';
+
+// 语音听写（IAT）服务密钥
+export const PROT_IAT_API_KEY: string = 'YOUR_IAT_API_KEY';
+export const PROT_IAT_API_SECRET: string = 'YOUR_IAT_API_SECRET';
+
+// 已弃用的录音文件转写密钥（仅供回退）
+export const PROT_IFASR_SECRET: string = 'YOUR_IFASR_SECRET';
+
+// 星火大模型（Spark）服务密钥
+export const PROT_SPARK_API_KEY: string = 'YOUR_SPARK_API_KEY';
+export const PROT_SPARK_API_SECRET: string = 'YOUR_SPARK_API_SECRET';
