@@ -441,7 +441,7 @@ struct Index {
     } else if (name === 'Settings') {
       NavDestination() {
         SettingsView()
-      }
+      }.hideTitleBar(true)
       .onAppear(() => { applyStatusBar('theme'); })
       .onDisAppear(() => { applyStatusBar('brand'); })
     }
@@ -454,15 +454,19 @@ struct Index {
         // 主内容区：Swiper 横向分页，滑动/点击均可切换，底部预留悬浮栏高度
         Swiper() {
           Column() { CategoryView() }
+            .key(this._fs.toString())
             .height('100%')
             .padding({ bottom: FLOATING_RESERVE + this.safeBottom })
           Column() { FlashcardView() }
+            .key(this._fs.toString())
             .height('100%')
             .padding({ bottom: FLOATING_RESERVE + this.safeBottom })
           Column() { QuestionBankView({ root: true }) }
+            .key(this._fs.toString())
             .height('100%')
             .padding({ bottom: FLOATING_RESERVE + this.safeBottom })
           Column() { ProfileView() }
+            .key(this._fs.toString())
             .height('100%')
             .padding({ bottom: FLOATING_RESERVE + this.safeBottom })
         }

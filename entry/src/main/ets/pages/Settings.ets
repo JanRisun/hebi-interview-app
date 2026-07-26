@@ -1,5 +1,5 @@
 // 设置页（从个人中心「设置」入口进入）
-//   - 外观：跟随系统 / 浅色 / 深色（window.setColorMode 全局生效）
+//   - 外观：跟随系统 / 浅色 / 深色（ApplicationContext.setColorMode 全局生效）
 //   - 文字大小：标准 / 大 / 特大（实时预览，FONT getter 随 AppStorage('fontScale') 变化）
 //   - 通知：每日备考提醒开关（复用既有提醒逻辑）
 //   - 数据：清除学习记录 / 清除我的标记
@@ -19,6 +19,107 @@ import {
 } from '../utils/SettingsStore';
 import { UserTagStore } from '../utils/UserTagStore';
 import { publishDailyReminder } from '../utils/ReminderHelper';
+
+// 分段按钮（外观 / 字号共用）：用独立组件 + @Prop selected，保证选中态可靠随 @State 重渲染
+@Component
+struct SegButton {
+  @Prop label: string = '';
+  @Prop selected: boolean = false;
+  onTap: () => void = () => {};
+
+  build() {
+    Row() {
+      Text(this.label)
+        .fontSize(FONT.bodySm)
+        .fontWeight(this.selected ? FontWeight.Bold : FontWeight.Normal)
+        .fontColor(this.selected ? $r('app.color.on_primary') : $r('app.color.text_primary'))
+    }
+    .layoutWeight(1)
+    .height(36)
+    .justifyContent(FlexAlign.Center)
+    .backgroundColor(this.selected ? $r('app.color.brand') : $r('app.color.surface_variant'))
+    .borderRadius(RADIUS.sm)
+    .onClick(() => this.onTap())
+  }
+}
+
+// 分组卡片：标题 + 内容构建器（用 @BuilderParam 接收内容，避免 @Builder 方法无法承载构建器参数）
+@Component
+struct GroupCard {
+  title: string = '';
+  @BuilderParam content: () => void;
+
+  build() {
+    Column() {
+      Text(this.title)
+        .fontSize(FONT.caption)
+        .fontColor($r('app.color.text_secondary'))
+        .width('100%')
+        .margin({ bottom: SPACE.sm, left: SPACE.xs })
+      Column() {
+        this.content();
+      }
+      .width('100%')
+      .padding(SPACE.md)
+      .backgroundColor($r('app.color.surface'))
+      .borderRadius(RADIUS.lg)
+      .shadow({ radius: 8, color: $r('app.color.card_stroke'), offsetY: 2 })
+    }
+    .width('100%')
+    .margin({ bottom: SPACE.md })
+    .alignItems(HorizontalAlign.Start)
+  }
+}
+
+// 操作行（点击触发确认弹窗），弹窗用 AlertDialog.show 直接在点击时弹出，避免对 @Builder 结果链式调用 .alert()
+@Component
+struct ActionRow {
+  emoji: string = '';
+  bg: Resource = $r('app.color.brand_light');
+  fg: Resource = $r('app.color.brand');
+  title: string = '';
+  sub: string = '';
+  alertTitle: string = '';
+  alertMessage: string = '';
+  confirmAction: () => void = () => {};
+
+  build() {
+    Row() {
+      IconTile({ emoji: this.emoji, bg: this.bg, fg: this.fg, dim: 42 })
+        .margin({ right: SPACE.md })
+      Column() {
+        Text(this.title)
+          .fontSize(FONT.body)
+          .fontColor($r('app.color.text_primary'))
+          .width('100%')
+        Text(this.sub)
+          .fontSize(FONT.caption)
+          .fontColor($r('app.color.text_secondary'))
+          .margin({ top: SPACE.xs })
+          .width('100%')
+      }
+      .layoutWeight(1)
+      .alignItems(HorizontalAlign.Start)
+      Text('›')
+        .fontSize(FONT.title)
+        .fontColor($r('app.color.text_arrow'))
+    }
+    .width('100%')
+    .padding(SPACE.lg)
+    .backgroundColor($r('app.color.surface'))
+    .borderRadius(RADIUS.md)
+    .margin({ bottom: SPACE.sm })
+    .shadow({ radius: 10, color: $r('app.color.card_stroke'), offsetY: 2 })
+    .onClick(() => {
+      AlertDialog.show({
+        title: this.alertTitle,
+        message: this.alertMessage,
+        confirm: { value: '清除', action: () => this.confirmAction() },
+        cancel: () => {}
+      })
+    })
+  }
+}
 
 @Component
 export struct SettingsView {
@@ -96,46 +197,8 @@ export struct SettingsView {
     UserTagStore.clearAll();
   }
 
-  // 分组卡片：标题 + 内容构建器
-  @Builder groupCard(title: string, @BuilderParam content: () => void) {
-    Column() {
-      Text(title)
-        .fontSize(FONT.caption)
-        .fontColor($r('app.color.text_secondary'))
-        .width('100%')
-        .margin({ bottom: SPACE.sm, left: SPACE.xs })
-      Column() {
-        content()
-      }
-      .width('100%')
-      .padding(SPACE.md)
-      .backgroundColor($r('app.color.surface'))
-      .borderRadius(RADIUS.lg)
-      .shadow({ radius: 8, color: $r('app.color.card_stroke'), offsetY: 2 })
-    }
-    .width('100%')
-    .margin({ bottom: SPACE.md })
-    .alignItems(HorizontalAlign.Start)
-  }
-
-  // 分段按钮（外观 / 字号共用）
-  @Builder segButton(label: string, selected: boolean, cb: () => void) {
-    Row() {
-      Text(label)
-        .fontSize(FONT.bodySm)
-        .fontWeight(selected ? FontWeight.Bold : FontWeight.Normal)
-        .fontColor(selected ? $r('app.color.on_primary') : $r('app.color.text_primary'))
-    }
-    .layoutWeight(1)
-    .height(36)
-    .justifyContent(FlexAlign.Center)
-    .backgroundColor(selected ? $r('app.color.brand') : $r('app.color.surface_variant'))
-    .borderRadius(RADIUS.sm)
-    .onClick(cb)
-  }
-
   // 开关行
-  @Builder switchRow(emoji: Resource, bg: Resource, fg: Resource, title: string, sub: string, isOn: boolean, onChanged: (v: boolean) => void) {
+  @Builder switchRow(emoji: string, bg: Resource, fg: Resource, title: string, sub: string, isOn: boolean, onChanged: (v: boolean) => void) {
     Row() {
       IconTile({ emoji, bg, fg, dim: 42 })
         .margin({ right: SPACE.md })
@@ -159,60 +222,29 @@ export struct SettingsView {
     .padding({ top: SPACE.sm, bottom: SPACE.sm })
   }
 
-  // 操作行（点击触发确认弹窗）
-  @Builder actionRow(emoji: Resource, bg: Resource, fg: Resource, title: string, sub: string, onClick: () => void) {
-    Row() {
-      IconTile({ emoji, bg, fg, dim: 42 })
-        .margin({ right: SPACE.md })
-      Column() {
-        Text(title)
-          .fontSize(FONT.body)
-          .fontColor($r('app.color.text_primary'))
-          .width('100%')
-        Text(sub)
-          .fontSize(FONT.caption)
-          .fontColor($r('app.color.text_secondary'))
-          .margin({ top: SPACE.xs })
-          .width('100%')
-      }
-      .layoutWeight(1)
-      .alignItems(HorizontalAlign.Start)
-      Text('›')
-        .fontSize(FONT.title)
-        .fontColor($r('app.color.text_arrow'))
-    }
-    .width('100%')
-    .padding(SPACE.lg)
-    .backgroundColor($r('app.color.surface'))
-    .borderRadius(RADIUS.md)
-    .margin({ bottom: SPACE.sm })
-    .shadow({ radius: 10, color: $r('app.color.card_stroke'), offsetY: 2 })
-    .onClick(onClick)
-  }
-
   build() {
     Column() {
       BackHeader({ title: '设置' })
       Scroll() {
         Column() {
           // 外观
-          this.groupCard('外观', () => {
+          GroupCard({ title: '外观' }) {
             Row() {
               ForEach(this.themeOpts, (opt: string, i: number) => {
-                this.segButton(this.themeLabels[i], this.themeMode === opt, () => this.onTheme(i));
+                SegButton({ label: this.themeLabels[i], selected: this.themeMode === opt, onTap: () => this.onTheme(i) });
               }, (opt: string, i: number) => opt + i)
             }
             .width('100%')
             .padding(SPACE.xs)
             .backgroundColor($r('app.color.surface_variant'))
             .borderRadius(RADIUS.sm)
-          })
+          }
 
           // 文字大小
-          this.groupCard('文字大小', () => {
+          GroupCard({ title: '文字大小' }) {
             Row() {
               ForEach(['标准', '大', '特大'], (lab: string, i: number) => {
-                this.segButton(lab, this.fontLevel === i, () => this.onFont(i));
+                SegButton({ label: lab, selected: this.fontLevel === i, onTap: () => this.onFont(i) });
               }, (lab: string, i: number) => lab + i)
             }
             .width('100%')
@@ -225,39 +257,43 @@ export struct SettingsView {
               .fontColor($r('app.color.text_body'))
               .width('100%')
               .margin({ top: SPACE.md })
-          })
+          }
 
           // 通知
-          this.groupCard('通知', () => {
+          GroupCard({ title: '通知' }) {
             this.switchRow('🔔', $r('app.color.brand_light'), $r('app.color.brand'),
               '每日备考提醒', '每天固定时间推送复习提醒', this.remindOn, (v: boolean) => this.onRemind(v))
-          })
+          }
 
           // 数据
-          this.groupCard('数据', () => {
+          GroupCard({ title: '数据' }) {
             Column() {
-              this.actionRow('🧹', $r('app.color.accent_soft'), $r('app.color.accent'),
-                '清除学习记录', '删除自评与真题演练记录', () => {})
-                .alert({
-                  title: '清除学习记录',
-                  message: '将删除全部自评与真题演练记录，且不可恢复。',
-                  confirm: { value: '清除', action: () => this.doClearRecords() },
-                  cancel: () => {}
-                })
-              this.actionRow('🏷️', $r('app.color.brand_light'), $r('app.color.brand'),
-                '清除我的标记', '删除全部自定义标签', () => {})
-                .alert({
-                  title: '清除我的标记',
-                  message: '将删除所有内容上的自定义标记，且不可恢复。',
-                  confirm: { value: '清除', action: () => this.doClearMarks() },
-                  cancel: () => {}
-                })
+              ActionRow({
+                emoji: '🧹',
+                bg: $r('app.color.accent_soft'),
+                fg: $r('app.color.accent'),
+                title: '清除学习记录',
+                sub: '删除自评与真题演练记录',
+                alertTitle: '清除学习记录',
+                alertMessage: '将删除全部自评与真题演练记录，且不可恢复。',
+                confirmAction: () => this.doClearRecords()
+              })
+              ActionRow({
+                emoji: '🏷️',
+                bg: $r('app.color.brand_light'),
+                fg: $r('app.color.brand'),
+                title: '清除我的标记',
+                sub: '删除全部自定义标签',
+                alertTitle: '清除我的标记',
+                alertMessage: '将删除所有内容上的自定义标记，且不可恢复。',
+                confirmAction: () => this.doClearMarks()
+              })
             }
             .width('100%')
-          })
+          }
 
           // 关于
-          this.groupCard('关于', () => {
+          GroupCard({ title: '关于' }) {
             Row() {
               IconTile({ emoji: '📱', bg: $r('app.color.brand_light'), fg: $r('app.color.brand'), dim: 42 })
                 .margin({ right: SPACE.md })
@@ -277,7 +313,7 @@ export struct SettingsView {
             }
             .width('100%')
             .padding({ top: SPACE.sm, bottom: SPACE.sm })
-          })
+          }
         }
         .width('92%')
         .alignItems(HorizontalAlign.Start)
@@ -286,6 +322,7 @@ export struct SettingsView {
       .width('100%')
       .scrollBar(BarState.Off)
     }
+    .key(this._fs.toString())
     .width('100%')
     .height('100%')
     .backgroundColor($r('app.color.background'))

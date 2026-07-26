@@ -1,9 +1,8 @@
 // 全局设置：外观（主题模式）与文字大小持久化 + 应用。
-//  - 主题模式：'system' | 'light' | 'dark'，通过 window.setColorMode 全局即时切换（资源自动重解析）。
+//  - 主题模式：'system' | 'light' | 'dark'，通过 ApplicationContext.setColorMode 全局即时切换（资源自动重解析）。
 //  - 文字大小：0=标准 1=大 2=特大，缩放系数写入 AppStorage('fontScale')，FONT getter 实时读取。
 import { common, ConfigurationConstant } from '@kit.AbilityKit';
 import { preferences } from '@kit.ArkData';
-import { window } from '@kit.ArkUI';
 import { reapplyStatusBar } from './StatusBar';
 
 const PREF: string = 'settings';
@@ -26,39 +25,42 @@ export function initSettings(ctx: common.UIAbilityContext): void {
   });
 }
 
-// 窗口就绪后应用主题（setColorMode 需主窗口）
+// 窗口就绪后应用主题（NEXT 通过 ApplicationContext.setColorMode 全局即时切换，资源自动重解析）
 export function applyTheme(ctx: common.UIAbilityContext): void {
   const mode: string = (AppStorage.get('themeMode') as string) ?? 'system';
-  setWindowColorMode(ctx, mode as ThemeMode);
+  setAppColorMode(ctx, mode as ThemeMode);
 }
 
-function setWindowColorMode(ctx: common.UIAbilityContext, mode: ThemeMode): void {
-  window.getLastWindow(ctx).then((win: window.Window) => {
-    let cm: window.ColorMode;
-    if (mode === 'light') cm = window.ColorMode.MODE_LIGHT;
-    else if (mode === 'dark') cm = window.ColorMode.MODE_DARK;
-    else cm = window.ColorMode.MODE_AUTO;
-    try {
-      win.setColorMode(cm);
-    } catch (e) {
-      // 部分设备/模拟器窗口能力受限，忽略即可
-    }
-    // 同步状态栏判定用的 currentColorMode，保证状态栏前景色与强制主题一致
-    if (mode === 'system') {
-      AppStorage.set('currentColorMode', ctx.config.colorMode);
-    } else {
-      AppStorage.set('currentColorMode',
-        mode === 'dark' ? ConfigurationConstant.ColorMode.COLOR_MODE_DARK : ConfigurationConstant.ColorMode.COLOR_MODE_LIGHT);
-    }
-    reapplyStatusBar();
-  }).catch(() => {
-    // 窗口未就绪，忽略
-  });
+// 应用级颜色模式：'system' 跟随系统，'light' / 'dark' 强制。
+// NEXT 已弃用 window.Window.setColorMode，统一改用 ApplicationContext.setColorMode。
+function setAppColorMode(ctx: common.UIAbilityContext, mode: ThemeMode): void {
+  let cm: ConfigurationConstant.ColorMode;
+  if (mode === 'light') {
+    cm = ConfigurationConstant.ColorMode.COLOR_MODE_LIGHT;
+  } else if (mode === 'dark') {
+    cm = ConfigurationConstant.ColorMode.COLOR_MODE_DARK;
+  } else {
+    cm = ConfigurationConstant.ColorMode.COLOR_MODE_NOT_SET;
+  }
+  try {
+    const appCtx: common.ApplicationContext = ctx.getApplicationContext();
+    appCtx.setColorMode(cm);
+  } catch (e) {
+    // 部分环境不支持应用级 setColorMode，忽略即可
+  }
+  // 同步状态栏判定用的 currentColorMode，保证状态栏前景色与强制主题一致
+  if (mode === 'system') {
+    AppStorage.set('currentColorMode', ctx.config.colorMode);
+  } else {
+    AppStorage.set('currentColorMode',
+      mode === 'dark' ? ConfigurationConstant.ColorMode.COLOR_MODE_DARK : ConfigurationConstant.ColorMode.COLOR_MODE_LIGHT);
+  }
+  reapplyStatusBar();
 }
 
 export function setThemeMode(ctx: common.UIAbilityContext, mode: ThemeMode): void {
   AppStorage.set('themeMode', mode);
-  setWindowColorMode(ctx, mode);
+  setAppColorMode(ctx, mode);
   preferences.getPreferences(ctx, PREF).then((p) => {
     p.putSync(KEY_THEME, mode);
     p.flush();
@@ -73,6 +75,18 @@ export function setFontLevel(ctx: common.UIAbilityContext, level: number): void 
     p.putSync(KEY_FONT, lv);
     p.flush();
   });
+  // FONT getter 通过 AppStorage.get('fontScale') 读取，属于非响应式取值，
+  // 仅改字号无法可靠触发已挂载组件重渲染。这里复用“切换外观”的已验证机制：
+  // 重新应用一次主题（强制产生一次颜色模式切换事件），使系统重解析资源、
+  // 全局组件重渲染，从而在 build 中重新读取 FONT，字号即时全站生效。
+  const cur: ThemeMode = (AppStorage.get('themeMode') as ThemeMode) ?? 'system';
+  if (cur === 'system') {
+    setAppColorMode(ctx, 'light');
+    setAppColorMode(ctx, 'system');
+  } else {
+    setAppColorMode(ctx, 'system');
+    setAppColorMode(ctx, cur);
+  }
 }
 
 export function getThemeMode(ctx: common.UIAbilityContext): Promise<ThemeMode> {
