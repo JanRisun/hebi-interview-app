@@ -131,7 +131,7 @@ function parseQuestions(file) {
           p2.push(l);
         }
         prompt = stripMd(p2.join(NL));
-      } else prompt = '';
+      } else prompt = stripMd(b.heading);
     }
     // answerScript：旧格式取「除题目/复盘外的小节」；新格式取 思考/作答时间 后的正文（去掉 ★贴靠 引用）
     const ansSecs = secs.filter(x => !/题目/.test(x.heading) && !/作答复盘表/.test(x.heading));
@@ -223,6 +223,13 @@ function srcName(fn) {
   if (/真题四/.test(fn)) return '真题四';
   if (/终期四|期末四/.test(fn)) return '终期模拟四';
   if (/模拟题/.test(fn)) return '模拟题';
+  if (/乡村协理员/.test(fn)) {
+    if (/政务小程序|民情恳谈会|邻里纠纷/.test(fn)) return '乡村协理员·政务';
+    if (/项目验收/.test(fn)) return '乡村协理员·验收';
+    return '乡村协理员·笔记';
+  }
+  if (/现象认知逐字稿精选/.test(fn)) return '现象认知精选';
+  if (/观点认知逐字稿精选/.test(fn)) return '观点认知精选';
   return fn;
 }
 // 来源 -> 短代码（用于生成规整且唯一的 id）
@@ -230,9 +237,14 @@ function srcCode(s) {
   const m = {
     '浚县2025.6.21': 'junxian',
     '真题一': 't1', '真题二': 't2', '真题三': 't3', '真题四': 't4',
-    '终期模拟四': 'm4',
-    '模拟题': 'mock'
-  };
+  '终期模拟四': 'm4',
+  '模拟题': 'mock',
+  '乡村协理员·政务': 'xcz',
+  '乡村协理员·验收': 'xcy',
+  '乡村协理员·笔记': 'xcb',
+  '现象认知精选': 'xgx',
+  '观点认知精选': 'xvg'
+};
   return m[s] || slug(s) || 'x';
 }
 function slug(s) { return s.replace(/[^a-zA-Z0-9]/g, ''); }
@@ -308,12 +320,19 @@ const questionFiles = [
   '04-真题模拟/事业单位面试真题四逐字稿.md',
   '04-真题模拟/事业单位面试模拟题逐字稿.md',
   '04-真题模拟/事业单位面试模拟题_终期四逐字稿.md',
-  '02-逐字稿/套题训练20260809_逐字稿.md'
+  '02-逐字稿/套题训练20260809_逐字稿.md',
+  '04-真题模拟/7.21-鹤壁乡村协理员3道逐字稿_依规办事_老年助餐_养殖补贴_笔记版.md',
+  '04-真题模拟/7.21-鹤壁乡村协理员3道逐字稿_政务小程序_民情恳谈会_邻里纠纷.md',
+  '04-真题模拟/7.21-鹤壁乡村协理员3道逐字稿_依规办事_老年助餐_项目验收.md',
+  '04-真题模拟/7.15-现象认知逐字稿精选_IMA.md',
+  '04-真题模拟/7.15-观点认知逐字稿精选_IMA.md'
 ];
 const articleFiles = [
   { f: '00-备考总册/鹤壁事业编综合类面试备考总册.md', cat: '主题专项' },
   { f: '01-专项拆解/鹤壁事业编宣传类题型专项拆解.md', cat: '宣传类专项' },
-  { f: '07-IMA知识库整理/知识库总索引与窗口岗优先清单.md', cat: '索引' }
+  { f: '07-IMA知识库整理/知识库总索引与窗口岗优先清单.md', cat: '索引' },
+  { f: '07-IMA知识库整理/政府文件_政策素材.md', cat: '政策素材' },
+  { f: '07-IMA知识库整理/素材积累_精选.md', cat: '素材积累' }
 ];
 
 let questions = [];
