@@ -8,7 +8,7 @@ import { FONT, RADIUS, SPACE, SAFE_AREA_TYPES, SAFE_AREA_EDGES } from '../utils/
 import { IconTile, EmptyState, HighlightText } from '../utils/Ui';
 
 // 导航参数透传对象（规避 arkts-no-untyped-obj-literals）
-interface DetailParam { id: string; kind: string }
+interface DetailParam { id: string; kind: string; cat?: string }
 
 interface FavItem {
   id: string;
@@ -133,7 +133,7 @@ export struct Favorites {
     .margin({ bottom: SPACE.sm })
     .shadow({ radius: 10, color: $r('app.color.card_stroke'), offsetY: 2 })
     .onClick(() => {
-      const params: DetailParam = { id: it.id, kind: it.kind };
+      const params: DetailParam = { id: it.id, kind: it.kind, cat: it.sub };
       this.pageStack.pushPathByName('Detail', params);
     })
   }

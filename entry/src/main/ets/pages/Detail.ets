@@ -13,7 +13,7 @@ import { preferences } from '@kit.ArkData';
 import { promptAction } from '@kit.ArkUI';
 
 // 路由参数类型（规避 arkts-no-untyped-obj-literals）
-interface DetailParam { id: string; kind: string; kw?: string }
+interface DetailParam { id: string; kind: string; kw?: string; cat?: string }
 interface AudioAnswerParam { id: string }
 interface VideoAnswerParam { id: string }
 
@@ -125,6 +125,7 @@ export struct Detail {
     const id: string = (p['id'] as string) ?? '';
     const kind: string = (p['kind'] as string) ?? 'article';
     const kw: string = ((p['kw'] as string) ?? '').trim();
+    const cat: string = (p['cat'] as string) ?? '';
     this.itemId = id;
     this.kind = kind;
     this.kw = kw;
@@ -135,7 +136,7 @@ export struct Detail {
     await FavStore.init(ctx);
     if (token !== this.loadToken) return;
     if (kind === 'article') {
-      this.article = DataStore.articleById(id) ?? null;
+      this.article = DataStore.articleById(id, cat) ?? null;
     } else {
       this.question = DataStore.questionById(id) ?? null;
       this.showAnswer = false;
@@ -365,6 +366,7 @@ export struct Detail {
       .width('92%')
       .alignItems(HorizontalAlign.Start)
       .justifyContent(FlexAlign.Start)
+      .padding({ bottom: SPACE.lg })
       .constraintSize({ minHeight: '100%' })
     }
     .contentStartOffset(0)
@@ -545,6 +547,7 @@ export struct Detail {
       .width('92%')
       .alignItems(HorizontalAlign.Start)
       .justifyContent(FlexAlign.Start)
+      .padding({ bottom: SPACE.lg })
       .constraintSize({ minHeight: '100%' })
     }
     .layoutWeight(1)
@@ -680,8 +683,9 @@ export struct Detail {
       .backgroundColor($r('app.color.background'))
       .expandSafeArea(SAFE_AREA_TYPES, SAFE_AREA_EDGES)
       .justifyContent(FlexAlign.Start)
-      // 详情页是整屏 NavDestination；进入后首页（含悬浮 Tab 栏）已被隐藏，底部只留系统安全区即可
-      .padding({ bottom: this.safeBottom })
+      // 详情页是整屏 NavDestination；进入后首页（含悬浮 Tab 栏）已被隐藏。
+      // 底部除系统安全区外，额外留白避免内容被屏幕圆角切割（同时避让右下角悬浮按钮）
+      .padding({ bottom: this.safeBottom + SPACE.lg })
       // 内容区触摸：识别左右手（按按下点 x 落在屏幕哪一侧）
       .onTouch((e: TouchEvent) => {
         if (e.type === TouchType.Down) {

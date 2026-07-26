@@ -270,7 +270,7 @@ struct Index {
     .width(FLOATING_BAR_WIDTH)
     .height(FLOATING_BAR_HEIGHT)
     .borderRadius(30)
-    .backgroundColor(Color.White)
+    .backgroundColor($r('app.color.surface'))
     .shadow({ radius: 16, color: 'rgba(0, 0, 0, 0.12)', offsetX: 0, offsetY: 4 })
     .translate({ x: this.gripOffsetX })
     .animation({ duration: 320, curve: Curve.EaseInOut })
@@ -541,7 +541,7 @@ struct IndexPreview {
       .width(FLOATING_BAR_WIDTH)
       .height(FLOATING_BAR_HEIGHT)
       .borderRadius(30)
-      .backgroundColor(Color.White)
+      .backgroundColor($r('app.color.surface'))
       .shadow({ radius: 16, color: 'rgba(0, 0, 0, 0.12)', offsetX: 0, offsetY: 4 })
       .margin({ bottom: this.safeBottom + 16 })
     }

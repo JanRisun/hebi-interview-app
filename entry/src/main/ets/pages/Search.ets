@@ -8,7 +8,7 @@ import { BackHeader } from '../utils/BackHeader';
 import { IconTile, EmptyState, TagChip, HighlightText } from '../utils/Ui';
 
 // 导航参数透传对象（规避 arkts-no-untyped-obj-literals）
-interface DetailParam { id: string; kind: string; kw?: string }
+interface DetailParam { id: string; kind: string; kw?: string; cat?: string }
 
 @Component
 export struct SearchPage {
@@ -142,7 +142,7 @@ export struct SearchPage {
               .margin({ bottom: 8 })
               .shadow({ radius: 10, color: $r('app.color.card_stroke'), offsetY: 2 })
               .onClick(() => {
-                const params: DetailParam = { id: h.id, kind: h.kind, kw: this.kw };
+                const params: DetailParam = { id: h.id, kind: h.kind, kw: this.kw, cat: h.category };
                 this.pageStack.pushPathByName('Detail', params);
               })
             }

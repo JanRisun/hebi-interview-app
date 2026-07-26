@@ -11,7 +11,7 @@ import { IconTile, EmptyState, HighlightText } from '../utils/Ui';
 const K_TABS: string[] = ['考情', '题型方法', '专项练习', '主题专项', '宣传类专项', '政策素材', '素材积累', '索引', '经典理论'];
 
 // 详情路由参数（规避 arkts-no-untyped-obj-literals：字面量必须对应显式声明的接口）
-interface DetailParam { id: string; kind: string; kw?: string }
+interface DetailParam { id: string; kind: string; kw?: string; cat?: string }
 
 @Component
 export struct KnowledgeView {
@@ -52,7 +52,7 @@ export struct KnowledgeView {
 
   // 进入知识点详情
   private openArticle(a: Article): void {
-    const params: DetailParam = { id: a.id, kind: 'article', kw: this.kw };
+    const params: DetailParam = { id: a.id, kind: 'article', kw: this.kw, cat: a.category };
     this.pageStack.pushPathByName('Detail', params);
   }
 

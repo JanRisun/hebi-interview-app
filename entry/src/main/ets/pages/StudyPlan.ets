@@ -15,7 +15,7 @@ import { Article, MockSet, AppData } from '../model/Types';
 import { IconTile, SectionTitle } from '../utils/Ui';
 
 // 导航参数透传对象（规避 arkts-no-untyped-obj-literals：字面量必须对应显式声明的接口）
-interface DetailParam { id: string; kind: string }
+interface DetailParam { id: string; kind: string; cat?: string }
 interface PracticeParam { setId: string }
 
 const PREF_NAME: string = 'practice';
@@ -564,8 +564,8 @@ export struct StudyPlan {
         .margin({ bottom: SPACE.sm })
 
       if (this.today) {
-        this.todayCard('📄', '今日素材', this.today.mat.id, this.today.mat.title, this.today.mat.summary)
-        this.todayCard('🧠', '今日知识', this.today.know.id, this.today.know.title, this.today.know.summary)
+        this.todayCard('📄', '今日素材', this.today.mat.id, this.today.mat.title, this.today.mat.summary, this.today.mat.category)
+        this.todayCard('🧠', '今日知识', this.today.know.id, this.today.know.title, this.today.know.summary, this.today.know.category)
         // 今日套题
         Row() {
           IconTile({ emoji: '📝', bg: $r('app.color.brand_light'), fg: $r('app.color.brand'), dim: 42 })
@@ -611,7 +611,7 @@ export struct StudyPlan {
   }
 
   // 今日素材/知识卡片（可点击跳详情）
-  @Builder todayCard(emoji: string, tag: string, id: string, title: string, desc: string) {
+  @Builder todayCard(emoji: string, tag: string, id: string, title: string, desc: string, cat: string) {
     Row() {
       IconTile({ emoji: emoji, bg: $r('app.color.brand_light'), fg: $r('app.color.brand'), dim: 42 })
         .margin({ right: SPACE.md })
@@ -645,7 +645,7 @@ export struct StudyPlan {
     .margin({ bottom: SPACE.sm })
     .shadow({ radius: 10, color: $r('app.color.card_stroke'), offsetY: 2 })
     .onClick(() => {
-      const params: DetailParam = { id: id, kind: 'article' };
+      const params: DetailParam = { id: id, kind: 'article', cat: cat };
       this.pageStack.pushPathByName('Detail', params);
     })
     .stateStyles({

@@ -20,8 +20,14 @@ export class DataStore {
     return DataStore._data as AppData;
   }
 
-  static articleById(id: string): Article | undefined {
-    return DataStore._data?.articles.find(a => a.id === id);
+  // 按 id 取文章；可选 cat 用于在同一 id 跨分类重复时精确定位（data.json 中 a__1~a__11 等 id 被多个分类复用，需靠分类去重）
+  static articleById(id: string, cat?: string): Article | undefined {
+    const arr: Article[] = DataStore._data?.articles ?? [];
+    if (cat) {
+      const hit: Article | undefined = arr.find(a => a.id === id && a.category === cat);
+      if (hit) return hit;
+    }
+    return arr.find(a => a.id === id);
   }
 
   static questionById(id: string): Question | undefined {

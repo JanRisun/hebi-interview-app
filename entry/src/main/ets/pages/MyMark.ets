@@ -9,7 +9,7 @@ import { BackHeader } from '../utils/BackHeader';
 import { IconTile, EmptyState, HighlightText } from '../utils/Ui';
 
 // 详情路由参数（规避 arkts-no-untyped-obj-literals：字面量必须对应显式声明的接口）
-interface DetailParam { id: string; kind: string; kw?: string }
+interface DetailParam { id: string; kind: string; kw?: string; cat?: string }
 
 // 统一列表项（收藏 / 我的标记 共用）
 interface MarkItem {
@@ -102,7 +102,7 @@ export struct MyMarkView {
 
   // 进入详情
   private openItem(it: MarkItem): void {
-    const params: DetailParam = { id: it.id, kind: it.kind, kw: this.kw };
+    const params: DetailParam = { id: it.id, kind: it.kind, kw: this.kw, cat: it.sub };
     this.pageStack.pushPathByName('Detail', params);
   }
 
