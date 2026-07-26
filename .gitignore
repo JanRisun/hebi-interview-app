@@ -4,6 +4,9 @@
 /build-profile.json5
 /local.properties
 
+# 明文密钥文件（含讯飞 APPID / APIKey / APISecret，禁止入库；clone 后自行重建）
+/entry/src/main/ets/utils/Protected.ets
+
 # 构建缓存与产物
 /.hvigor/
 **/build/

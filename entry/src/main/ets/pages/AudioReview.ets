@@ -6,6 +6,7 @@ import { AnswerRecord, Question } from '../model/Types';
 import { FONT, RADIUS, SPACE, SAFE_AREA_TYPES, SAFE_AREA_EDGES } from '../utils/Theme';
 import { BackHeader } from '../utils/BackHeader';
 import { CloudAsrHelper } from '../utils/CloudAsrHelper';
+import { SparkAiHelper, AiReviewResult, AiDimension } from '../utils/SparkAiHelper';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { media } from '@kit.MediaKit';
@@ -46,6 +47,19 @@ export struct AudioReviewView {
   @State scriptNeedFold: boolean = false;               // 参考解析是否需要折叠（超出默认 8 行）
   @State scriptContentWidth: number = 0;                // 「解析与示范」卡片内文本可用宽度（vp），布局后获取
 
+  // AI 答题点评（讯飞星火）相关状态
+  @State aiLoading: boolean = false;                    // 是否正在生成 AI 点评
+  @State aiError: string = '';                          // AI 点评失败原因
+  @State aiDone: boolean = false;                        // 是否已生成 AI 点评
+  @State aiScore: number = 0;                           // 综合分
+  @State aiLevel: string = '';                          // 等级
+  @State aiSummary: string = '';                        // 一句话总评
+  @State aiDimensions: AiDimension[] = []; // 维度评分
+  @State aiReview: string[] = [];                        // 点评段落
+  @State aiTags: string[] = [];                          // 标签
+  @State aiPolishBefore: string = '';                   // 润色前
+  @State aiPolishAfter: string = '';                    // 润色后
+
   // 答题音频回放（与音频作答页一致的 AVPlayer 实现）
   @State playbackProgress: number = 0;                  // 回放进度（毫秒）
   @State playbackDuration: number = 0;                  // 回放总时长（毫秒）
@@ -83,7 +97,10 @@ export struct AudioReviewView {
       if (p.audioPath) {
         this.initPlayback(p.audioPath);
       }
-      this.loadTranscript(p.id, ctx);
+      await this.loadTranscript(p.id, ctx);
+      if (this.hasTranscript) {
+        this.loadAiReview();
+      }
       return;
     }
 
@@ -104,7 +121,10 @@ export struct AudioReviewView {
       const err = e as BusinessError;
       hilog.error(DOMAIN, TAG, 'load record fail: %{public}s', err.message);
     }
-    this.loadTranscript(p.id, ctx);
+    await this.loadTranscript(p.id, ctx);
+    if (this.hasTranscript) {
+      this.loadAiReview();
+    }
   }
 
   // 加载语音转文字：优先读取作答页已落盘的 rec_<id>.txt；不存在时对录音做一次云侧 ASR（讯飞 IAT，需联网与正确密钥）
@@ -147,6 +167,37 @@ export struct AudioReviewView {
         this.transcribing = false;
       }
     }
+  }
+
+  // 调用讯飞星火生成真实 AI 答题点评，并写入页面状态
+  private loadAiReview(): void {
+    if (!this.transcriptText || this.transcriptText.length === 0) {
+      return; // 无转写稿则不调用星火，避免空稿请求与浪费额度
+    }
+    this.aiLoading = true;
+    this.aiError = '';
+    this.aiDone = false;
+    const title: string = this.question ? this.question.title : '';
+    const prompt: string = this.question ? this.question.prompt : '';
+    const transcript: string = this.transcriptText;
+    SparkAiHelper.reviewAnswer(title, prompt, transcript)
+      .then((res: AiReviewResult): void => {
+        this.aiScore = res.score;
+        this.aiLevel = res.level;
+        this.aiSummary = res.summary;
+        this.aiDimensions = res.dimensions;
+        this.aiReview = res.review;
+        this.aiTags = res.tags;
+        this.aiPolishBefore = res.polishBefore;
+        this.aiPolishAfter = res.polishAfter;
+        this.aiDone = true;
+        this.aiLoading = false;
+      })
+      .catch((e: Error): void => {
+        this.aiError = (e as BusinessError)?.message || e.message || '未知错误';
+        this.aiLoading = false;
+        hilog.error(DOMAIN, TAG, 'AI review fail: %{public}s', this.aiError);
+      });
   }
 
   aboutToDisappear(): void {
@@ -310,9 +361,11 @@ export struct AudioReviewView {
         Column() {
           this.questionSection()
           this.answerSection()
-          this.scoreSection()
-          this.reviewSection()
-          this.aiPolishSection()
+          if (this.aiDone || this.aiLoading || this.aiError) {
+            this.scoreSection()
+            this.reviewSection()
+            this.aiPolishSection()
+          }
           this.analysisTranscriptSection()
         }
         .width('100%')
@@ -654,51 +707,64 @@ export struct AudioReviewView {
   @Builder scoreSection() {
     Column() {
       this.sectionTitle('得分')
-      Row() {
-        Column() {
-          Text('85')
-            .fontSize(40)
-            .fontWeight(FontWeight.Bold)
-            .fontColor($r('app.color.brand'))
-          Text('综合分')
-            .fontSize(FONT.caption)
-            .fontColor($r('app.color.text_secondary'))
-            .margin({ top: 2 })
+      if (this.aiLoading && !this.aiDone) {
+        Text('AI 点评生成中…')
+          .fontSize(FONT.body)
+          .fontColor($r('app.color.text_secondary'))
+      } else if (this.aiError && !this.aiDone) {
+        Text('AI 点评失败：' + this.aiError)
+          .fontSize(FONT.caption)
+          .fontColor($r('app.color.danger'))
+          .lineHeight(20)
+          .width('100%')
+      } else if (this.aiDone) {
+        Row() {
+          Column() {
+            Text('' + this.aiScore)
+              .fontSize(40)
+              .fontWeight(FontWeight.Bold)
+              .fontColor($r('app.color.brand'))
+            Text('综合分')
+              .fontSize(FONT.caption)
+              .fontColor($r('app.color.text_secondary'))
+              .margin({ top: 2 })
+          }
+          .alignItems(HorizontalAlign.Center)
+
+          Row()
+            .width(1)
+            .height(40)
+            .backgroundColor($r('app.color.divider'))
+            .margin({ left: SPACE.xl, right: SPACE.xl })
+
+          Column() {
+            Text(this.aiLevel)
+              .fontSize(FONT.title)
+              .fontWeight(FontWeight.Bold)
+              .fontColor($r('app.color.text_title'))
+            Text(this.aiSummary)
+              .fontSize(FONT.caption)
+              .fontColor($r('app.color.text_secondary'))
+              .margin({ top: 4 })
+              .maxLines(2)
+          }
+          .layoutWeight(1)
+          .alignItems(HorizontalAlign.Start)
         }
-        .alignItems(HorizontalAlign.Center)
+        .width('100%')
+        .alignItems(VerticalAlign.Center)
 
-        Row()
-          .width(1)
-          .height(40)
-          .backgroundColor($r('app.color.divider'))
-          .margin({ left: SPACE.xl, right: SPACE.xl })
-
+        // 维度评分
         Column() {
-          Text('良好')
-            .fontSize(FONT.title)
-            .fontWeight(FontWeight.Bold)
-            .fontColor($r('app.color.text_title'))
-          Text('回答条理清晰，建议进一步丰富细节')
-            .fontSize(FONT.caption)
-            .fontColor($r('app.color.text_secondary'))
-            .margin({ top: 4 })
-            .maxLines(2)
+          ForEach(this.aiDimensions, (d: AiDimension, i: number): void => {
+            this.scoreRow(d.label, d.ratio);
+          }, (d: AiDimension, i: number): string => {
+            return '' + i;
+          })
         }
-        .layoutWeight(1)
-        .alignItems(HorizontalAlign.Start)
+        .width('100%')
+        .margin({ top: SPACE.md })
       }
-      .width('100%')
-      .alignItems(VerticalAlign.Center)
-
-      // 维度评分
-      Column() {
-        this.scoreRow('内容完整度', 0.88)
-        this.scoreRow('逻辑条理', 0.82)
-        this.scoreRow('语言表达', 0.86)
-        this.scoreRow('亮点 / 创新', 0.78)
-      }
-      .width('100%')
-      .margin({ top: SPACE.md })
     }
     .width('92%')
     .padding({ left: SPACE.lg, right: SPACE.lg, top: SPACE.lg, bottom: SPACE.lg })
@@ -747,21 +813,38 @@ export struct AudioReviewView {
   @Builder reviewSection() {
     Column() {
       this.sectionTitle('点评')
-      Text('回答结构完整，能紧扣题意展开论述，观点明确，论据较充分。')
-        .fontSize(FONT.body)
-        .fontColor($r('app.color.text_body'))
-        .lineHeight(22)
-        .margin({ bottom: SPACE.sm })
-      Text('建议在第二点论述中补充具体案例，可进一步增强说服力；同时注意口语化表达，可适当精简。')
-        .fontSize(FONT.body)
-        .fontColor($r('app.color.text_body'))
-        .lineHeight(22)
-      Row({ space: SPACE.sm }) {
-        this.tagChip('思路清晰')
-        this.tagChip('论据充分')
-        this.tagChip('可再精简')
+      if (this.aiLoading && !this.aiDone) {
+        Text('AI 点评生成中…')
+          .fontSize(FONT.body)
+          .fontColor($r('app.color.text_secondary'))
+      } else if (this.aiError && !this.aiDone) {
+        Text('AI 点评失败：' + this.aiError)
+          .fontSize(FONT.caption)
+          .fontColor($r('app.color.danger'))
+          .lineHeight(20)
+          .width('100%')
+      } else if (this.aiDone) {
+        ForEach(this.aiReview, (paragraph: string, i: number): void => {
+          Text(paragraph)
+            .fontSize(FONT.body)
+            .fontColor($r('app.color.text_body'))
+            .lineHeight(22)
+            .margin({ bottom: SPACE.sm })
+            .width('100%')
+        }, (paragraph: string, i: number): string => {
+          return '' + i;
+        })
+        if (this.aiTags.length > 0) {
+          Row({ space: SPACE.sm }) {
+            ForEach(this.aiTags, (t: string, i: number): void => {
+              this.tagChip(t);
+            }, (t: string, i: number): string => {
+              return '' + i;
+            })
+          }
+          .margin({ top: SPACE.md })
+        }
       }
-      .margin({ top: SPACE.md })
     }
     .width('92%')
     .padding({ left: SPACE.lg, right: SPACE.lg, top: SPACE.lg, bottom: SPACE.lg })
@@ -788,29 +871,44 @@ export struct AudioReviewView {
   @Builder aiPolishSection() {
     Column() {
       this.sectionTitle('AI 润色')
-      Text('润色前')
-        .fontSize(FONT.caption)
-        .fontColor($r('app.color.text_secondary'))
-      Text('我觉得这个事情挺重要的，因为我们现在面对的这个问题，其实从大方向来看，是一个比较长期的过程。')
-        .fontSize(FONT.body)
-        .fontColor($r('app.color.text_body'))
-        .lineHeight(22)
-        .padding({ left: SPACE.md, right: SPACE.md, top: SPACE.sm, bottom: SPACE.sm })
-        .margin({ top: SPACE.xs, bottom: SPACE.md })
-        .borderRadius(RADIUS.md)
-        .backgroundColor($r('app.color.surface_variant'))
-
-      Text('润色后')
-        .fontSize(FONT.caption)
-        .fontColor($r('app.color.brand'))
-      Text('这一议题至关重要。当前我们所面对的挑战，本质上是一项需要长期推进的系统性工作。')
-        .fontSize(FONT.body)
-        .fontColor($r('app.color.text_primary'))
-        .lineHeight(22)
-        .padding({ left: SPACE.md, right: SPACE.md, top: SPACE.sm, bottom: SPACE.sm })
-        .margin({ top: SPACE.xs })
-        .borderRadius(RADIUS.md)
-        .backgroundColor($r('app.color.brand_light'))
+      if (this.aiLoading && !this.aiDone) {
+        Text('AI 润色生成中…')
+          .fontSize(FONT.body)
+          .fontColor($r('app.color.text_secondary'))
+      } else if (this.aiError && !this.aiDone) {
+        Text('AI 润色失败：' + this.aiError)
+          .fontSize(FONT.caption)
+          .fontColor($r('app.color.danger'))
+          .lineHeight(20)
+          .width('100%')
+      } else if (this.aiDone) {
+        if (this.aiPolishBefore) {
+          Text('润色前')
+            .fontSize(FONT.caption)
+            .fontColor($r('app.color.text_secondary'))
+          Text(this.aiPolishBefore)
+            .fontSize(FONT.body)
+            .fontColor($r('app.color.text_body'))
+            .lineHeight(22)
+            .padding({ left: SPACE.md, right: SPACE.md, top: SPACE.sm, bottom: SPACE.sm })
+            .margin({ top: SPACE.xs, bottom: SPACE.md })
+            .borderRadius(RADIUS.md)
+            .backgroundColor($r('app.color.surface_variant'))
+        }
+        if (this.aiPolishAfter) {
+          Text('润色后')
+            .fontSize(FONT.caption)
+            .fontColor($r('app.color.brand'))
+          Text(this.aiPolishAfter)
+            .fontSize(FONT.body)
+            .fontColor($r('app.color.text_primary'))
+            .lineHeight(22)
+            .padding({ left: SPACE.md, right: SPACE.md, top: SPACE.sm, bottom: SPACE.sm })
+            .margin({ top: SPACE.xs })
+            .borderRadius(RADIUS.md)
+            .backgroundColor($r('app.color.brand_light'))
+        }
+      }
     }
     .width('92%')
     .padding({ left: SPACE.lg, right: SPACE.lg, top: SPACE.lg, bottom: SPACE.lg })

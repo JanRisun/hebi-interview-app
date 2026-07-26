@@ -10,7 +10,7 @@ import { FONT, RADIUS, SPACE, SAFE_AREA_TYPES, SAFE_AREA_EDGES } from '../utils/
 import { PageHeader, EmptyState, IconTile, HighlightText } from '../utils/Ui';
 
 // 二级页同款 6 个分类（与 Knowledge.ets 保持一致）
-const K_TABS: string[] = ['考情', '题型方法', '专项练习', '主题专项', '宣传类专项', '政策素材', '素材积累', '索引'];
+const K_TABS: string[] = ['考情', '题型方法', '专项练习', '主题专项', '宣传类专项', '政策素材', '素材积累', '索引', '经典理论'];
 
 // 详情路由参数（规避 arkts-no-untyped-obj-literals：字面量必须对应显式声明的接口）
 interface DetailParam { id: string; kind: string; kw?: string }
