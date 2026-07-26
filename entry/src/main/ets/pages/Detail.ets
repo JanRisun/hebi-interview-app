@@ -5,7 +5,7 @@ import { FavStore } from '../utils/FavStore';
 import { UserTagStore, PRESET_MARK_TAGS } from '../utils/UserTagStore';
 import { ReaderIcon } from '../utils/SpeechReader';
 import { BackHeader } from '../utils/BackHeader';
-import { SectionTitle, HighlightText } from '../utils/Ui';
+import { SectionTitle, HighlightText, HighlightSeg, splitHighlight } from '../utils/Ui';
 import { FONT, RADIUS, SPACE, SAFE_AREA_TYPES, SAFE_AREA_EDGES } from '../utils/Theme';
 import { motion } from '@kit.MultimodalAwarenessKit';
 import { BusinessError } from '@kit.BasicServicesKit';
@@ -16,6 +16,13 @@ import { promptAction } from '@kit.ArkUI';
 interface DetailParam { id: string; kind: string; kw?: string; cat?: string }
 interface AudioAnswerParam { id: string }
 interface VideoAnswerParam { id: string }
+
+// 正文段落项：把 section.body 拆成结构化列表，让「• 一句话：…」类的要点有清晰视觉层级
+interface BodyItem {
+  kind: 'bullet' | 'note' | 'plain';
+  lead: string;     // 引导词（仅 bullet 类型，如「一句话」「万能角度」）
+  rest: string;     // 主体内容
+}
 
 @Component
 export struct Detail {
@@ -185,6 +192,72 @@ export struct Detail {
     return m > 0 ? `${m}分${ss}秒` : `${ss}秒`;
   }
 
+  // 解析 section.body：按行拆分 → 去 bullet 前缀 → 按首个「：」拆引导词与正文
+  //   - 普通要点（• …）→ kind=bullet，含 lead + rest
+  //   - emoji 引导的提示段（📌 / 💡 / ⭐ …）→ kind=note
+  //   - 其它无前缀行 → kind=plain
+  private parseBody(body: string): BodyItem[] {
+    const items: BodyItem[] = [];
+    const lines: string[] = body.split(/\r?\n/)
+      .map((l: string): string => l.trim())
+      .filter((l: string): boolean => l.length > 0);
+    for (const line of lines) {
+      // 跳过分隔线
+      if (line === '---' || line === '———' || line === '----' || line === '====') continue;
+      // emoji 引导的提示段（📌 / 💡 / ⭐ / 🔴 / 🟡 / 🟢 / 🔵 等）
+      if (/^[📌💡⭐🔴🟡🟢🔵]/u.test(line)) {
+        items.push({ kind: 'note', lead: '', rest: line });
+        continue;
+      }
+      // 去掉 bullet 前缀（• · ● ・ / 1. 1、 1) 等）
+      const cleaned: string = line.replace(/^[•·●・]\s*/, '').replace(/^\d+[.、)]\s*/, '').trim();
+      if (!cleaned) continue;
+      // 按首个中文冒号拆分引导词
+      const colonIdx: number = cleaned.indexOf('：');
+      if (colonIdx > 0) {
+        items.push({
+          kind: 'bullet',
+          lead: cleaned.substring(0, colonIdx).trim(),
+          rest: cleaned.substring(colonIdx + 1).trim()
+        });
+      } else {
+        items.push({ kind: 'plain', lead: '', rest: cleaned });
+      }
+    }
+    return items;
+  }
+
+  // 节标题是否带中文数字前缀（"一、…" / "二、…"）
+  private isNumberedHeading(heading: string): boolean {
+    return /^[一二三四五六七八九十百]+[、.]\s*/.test(heading.trim());
+  }
+
+  // 提取节标题开头的数字（"一、唯物论" → "一"）
+  private sectionChar(heading: string): string {
+    const m: RegExpMatchArray | null = heading.match(/^([一二三四五六七八九十百]+)/);
+    return m ? (m[1] ?? '') : '';
+  }
+
+  // 去掉节标题开头的数字前缀（"一、唯物论（…）" → "唯物论（…）"）
+  private stripNumberPrefix(heading: string): string {
+    return heading.replace(/^[一二三四五六七八九十百]+[、.]\s*/, '').trim();
+  }
+
+  // 是否「答题实战应用」类特殊 callout 段（结尾的万能嵌入法 / 实战应用）
+  private isCalloutSection(heading: string): boolean {
+    return heading.includes('答题') || heading.includes('万能嵌入') || heading.includes('实战应用');
+  }
+
+  // 统计文章总字数（用于顶部 meta 行）
+  private totalChars(): number {
+    if (!this.article) return 0;
+    let n: number = (this.article.title ?? '').length;
+    for (const s of this.article.sections) {
+      n += (s.heading ?? '').length + (s.body ?? '').length;
+    }
+    return n;
+  }
+
   private async toggleFav(): Promise<void> {
     try {
       this.fav = await FavStore.toggle(this.itemId);
@@ -321,10 +394,24 @@ export struct Detail {
   @Builder articleView() {
     Scroll() {
       Column() {
-        // 大标题已上移至顶部 BackHeader（过长省略），此处不再重复
-        HighlightText({ text: this.article!.category, kw: this.kw, fontSize: FONT.caption, baseColor: $r('app.color.text_secondary'), baseWeight: FontWeight.Normal })
-          .margin({ bottom: SPACE.sm })
-        // 标签行：全部展示，自动换行
+        // 1. 顶部 meta 行：分类徽章 + 章节数/字数（深浅色 + 圆角药丸）
+        Row() {
+          Text(this.article!.category)
+            .fontSize(FONT.caption)
+            .fontWeight(FontWeight.Medium)
+            .fontColor($r('app.color.on_primary'))
+            .backgroundColor($r('app.color.brand'))
+            .borderRadius(RADIUS.sm)
+            .padding({ left: SPACE.sm, right: SPACE.sm, top: 4, bottom: 4 })
+          Blank()
+          Text(`共 ${this.article!.sections.length} 节 · 约 ${this.totalChars()} 字`)
+            .fontSize(FONT.caption)
+            .fontColor($r('app.color.text_tertiary'))
+        }
+        .width('100%')
+        .margin({ bottom: SPACE.sm })
+
+        // 2. 标签 chip（胶囊样式，与分类徽章区分）
         if (this.article!.tags !== undefined && this.article!.tags.length > 0) {
           Flex({ wrap: FlexWrap.Wrap }) {
             ForEach(this.article!.tags, (t: string) => {
@@ -332,15 +419,16 @@ export struct Detail {
                 .fontSize(FONT.caption)
                 .fontColor($r('app.color.brand'))
                 .backgroundColor($r('app.color.tag_bg'))
-                .borderRadius(RADIUS.sm)
-                .padding({ left: SPACE.sm, right: SPACE.sm, top: SPACE.xs, bottom: SPACE.xs })
+                .borderRadius(RADIUS.pill)
+                .padding({ left: SPACE.md, right: SPACE.md, top: SPACE.xs, bottom: SPACE.xs })
                 .margin({ top: SPACE.xs, right: SPACE.xs })
             }, (t: string) => t)
           }
           .width('100%')
           .margin({ bottom: SPACE.md })
         }
-        // 语音播报：整篇知识点（标题 + 各小节标题与正文）
+
+        // 3. 朗读按钮（ReaderIcon 自带胶囊样式，单独占行更醒目）
         Row() {
           ReaderIcon({
             readId: this.itemId + ':full',
@@ -350,17 +438,17 @@ export struct Detail {
             label: '朗读全文'
           })
         }
-        .margin({ bottom: SPACE.md })
+        .margin({ bottom: SPACE.sm })
+
+        // 4. 各 section 卡片：按类型分三种渲染（导言 / 一般节 / 答题实战 callout）
         ForEach(this.article!.sections, (s: Section) => {
-          Column() {
-            if (s.heading) {
-              HighlightText({ text: s.heading, kw: this.kw, fontSize: FONT.title, baseColor: $r('app.color.brand'), baseWeight: FontWeight.Medium })
-                .margin({ top: SPACE.md, bottom: SPACE.xs })
-            }
-            HighlightText({ text: s.body, kw: this.kw, fontSize: FONT.bodySm, baseColor: $r('app.color.text_body'), baseWeight: FontWeight.Normal })
+          if (!s.heading) {
+            this.introCard(s)
+          } else if (this.isCalloutSection(s.heading)) {
+            this.calloutCard(s)
+          } else {
+            this.sectionCard(s)
           }
-          .alignItems(HorizontalAlign.Start)
-          .width('100%')
         }, (s: Section) => s.heading + s.body.slice(0, 10))
       }
       .width('92%')
@@ -372,6 +460,214 @@ export struct Detail {
     .contentStartOffset(0)
     .layoutWeight(1)
     .width('100%')
+  }
+
+  // 节标题：编号圆形徽章 + 加粗标题（带关键词高亮）
+  @Builder sectionHeader(heading: string) {
+    Row() {
+      if (this.isNumberedHeading(heading)) {
+        Text(this.sectionChar(heading))
+          .fontSize(14)
+          .fontWeight(FontWeight.Bold)
+          .fontColor($r('app.color.on_primary'))
+          .width(28)
+          .height(28)
+          .lineHeight(28)
+          .borderRadius(14)
+          .backgroundColor($r('app.color.brand'))
+          .textAlign(TextAlign.Center)
+          .margin({ right: SPACE.sm })
+      }
+      HighlightText({
+        text: this.stripNumberPrefix(heading),
+        kw: this.kw,
+        fontSize: FONT.title,
+        baseWeight: FontWeight.Bold,
+        baseColor: $r('app.color.text_title'),
+        hitColor: $r('app.color.brand')
+      })
+        .layoutWeight(1)
+    }
+    .width('100%')
+    .alignItems(VerticalAlign.Center)
+    .margin({ bottom: SPACE.sm })
+  }
+
+  // 单条要点：左侧 • 标记 + 加粗引导词：<普通正文>（含关键词高亮）
+  @Builder bulletItem(lead: string, rest: string) {
+    Row() {
+      Text('•')
+        .fontSize(FONT.bodySm)
+        .fontColor($r('app.color.brand'))
+        .fontWeight(FontWeight.Bold)
+        .width(14)
+        .margin({ top: 2 })
+      Text() {
+        if (lead) {
+          Span(lead)
+            .fontSize(FONT.bodySm)
+            .fontColor($r('app.color.text_title'))
+            .fontWeight(FontWeight.Bold)
+          Span('：')
+            .fontSize(FONT.bodySm)
+            .fontColor($r('app.color.text_title'))
+            .fontWeight(FontWeight.Bold)
+        }
+        ForEach(splitHighlight(rest, this.kw),
+          (s: HighlightSeg) => {
+            Span(s.t)
+              .fontSize(FONT.bodySm)
+              .fontColor(s.hit ? $r('app.color.brand') : $r('app.color.text_body'))
+              .fontWeight(s.hit ? FontWeight.Bold : FontWeight.Normal)
+          },
+          (s: HighlightSeg, idx: number) => idx + '_' + s.t)
+      }
+      .layoutWeight(1)
+      .lineHeight(22)
+      .textAlign(TextAlign.Start)
+    }
+    .alignItems(VerticalAlign.Top)
+    .width('100%')
+    .margin({ top: SPACE.sm })
+  }
+
+  // 提示段（📌 / 💡 等 emoji 引导的说明文字）：accent_soft 底色突出
+  @Builder noteBlock(text: string) {
+    Row() {
+      Text('💡')
+        .fontSize(14)
+        .margin({ top: 1, right: SPACE.xs })
+      HighlightText({
+        text: text,
+        kw: this.kw,
+        fontSize: FONT.caption,
+        baseColor: $r('app.color.text_secondary'),
+        baseWeight: FontWeight.Normal,
+        hitColor: $r('app.color.brand')
+      })
+        .layoutWeight(1)
+    }
+    .width('100%')
+    .padding(SPACE.sm)
+    .backgroundColor($r('app.color.accent_soft'))
+    .borderRadius(RADIUS.sm)
+    .margin({ top: SPACE.sm })
+    .alignItems(VerticalAlign.Top)
+  }
+
+  // 纯文本段落（无 bullet / 无 emoji 引导）
+  @Builder plainBlock(text: string) {
+    HighlightText({
+      text: text,
+      kw: this.kw,
+      fontSize: FONT.bodySm,
+      baseColor: $r('app.color.text_body'),
+      baseWeight: FontWeight.Normal,
+      hitColor: $r('app.color.brand')
+    })
+      .width('100%')
+      .margin({ top: SPACE.sm })
+  }
+
+  // 通用 section 卡片：标题 + 拆分后的内容（白底 + 阴影 + 圆角）
+  @Builder sectionCard(s: Section) {
+    Column() {
+      if (s.heading) {
+        this.sectionHeader(s.heading)
+      }
+      ForEach(this.parseBody(s.body),
+        (item: BodyItem) => {
+          if (item.kind === 'bullet') {
+            this.bulletItem(item.lead, item.rest)
+          } else if (item.kind === 'note') {
+            this.noteBlock(item.rest)
+          } else {
+            this.plainBlock(item.rest)
+          }
+        },
+        (item: BodyItem, i: number) => i + '_' + item.kind + '_' + item.rest.length)
+    }
+    .width('100%')
+    .padding(SPACE.md)
+    .backgroundColor($r('app.color.surface'))
+    .borderRadius(RADIUS.lg)
+    .margin({ top: SPACE.md })
+    .alignItems(HorizontalAlign.Start)
+    .shadow({ radius: 8, color: $r('app.color.card_stroke'), offsetY: 2 })
+  }
+
+  // 实战应用卡片（最后一段「答题怎么用 / 万能嵌入法」）：品牌色描边 + 浅底
+  @Builder calloutCard(s: Section) {
+    Column() {
+      Row() {
+        Text('📌')
+          .fontSize(18)
+        HighlightText({
+          text: this.stripNumberPrefix(s.heading),
+          kw: this.kw,
+          fontSize: FONT.title,
+          baseWeight: FontWeight.Bold,
+          baseColor: $r('app.color.brand'),
+          hitColor: $r('app.color.brand_dark')
+        })
+          .layoutWeight(1)
+          .margin({ left: SPACE.sm })
+      }
+      .width('100%')
+      .alignItems(VerticalAlign.Center)
+      .margin({ bottom: SPACE.sm })
+      ForEach(this.parseBody(s.body),
+        (item: BodyItem) => {
+          if (item.kind === 'bullet') {
+            this.bulletItem(item.lead, item.rest)
+          } else if (item.kind === 'note') {
+            this.noteBlock(item.rest)
+          } else {
+            this.plainBlock(item.rest)
+          }
+        },
+        (item: BodyItem, i: number) => 'callout_' + i + '_' + item.kind + '_' + item.rest.length)
+    }
+    .width('100%')
+    .padding(SPACE.md)
+    .borderRadius(RADIUS.lg)
+    .backgroundColor($r('app.color.brand_light'))
+    .border({ width: 1, color: $r('app.color.brand') })
+    .margin({ top: SPACE.md })
+    .alignItems(HorizontalAlign.Start)
+  }
+
+  // 导言卡片（首段，空 heading 的来源说明）：surface_variant 浅灰底 + 📖 角标
+  @Builder introCard(s: Section) {
+    Column() {
+      Row() {
+        Text('📖')
+          .fontSize(14)
+        Text('导言')
+          .fontSize(FONT.caption)
+          .fontWeight(FontWeight.Medium)
+          .fontColor($r('app.color.text_secondary'))
+          .margin({ left: 6 })
+      }
+      .margin({ bottom: SPACE.sm })
+      ForEach(this.parseBody(s.body),
+        (item: BodyItem) => {
+          if (item.kind === 'bullet') {
+            this.bulletItem(item.lead, item.rest)
+          } else if (item.kind === 'note') {
+            this.noteBlock(item.rest)
+          } else {
+            this.plainBlock(item.rest)
+          }
+        },
+        (item: BodyItem, i: number) => 'intro_' + i + '_' + item.kind + '_' + item.rest.length)
+    }
+    .width('100%')
+    .padding(SPACE.md)
+    .backgroundColor($r('app.color.surface_variant'))
+    .borderRadius(RADIUS.lg)
+    .margin({ top: SPACE.md })
+    .alignItems(HorizontalAlign.Start)
   }
 
   @Builder questionView() {
