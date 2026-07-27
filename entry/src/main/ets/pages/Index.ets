@@ -25,6 +25,8 @@ import { StudyPlan } from './StudyPlan';
 import { AudioAnswerView } from './AudioAnswer';
 import { AudioReviewView } from './AudioReview';
 import { AICaptionDemoView } from './AICaptionDemo';
+import { TestLabView } from './TestLab';
+import { SpeechRecognizerDemoView } from './SpeechRecognizerDemo';
 import { SettingsView } from './Settings';
 import { VideoAnswerView } from './VideoAnswer';
 import { VideoReviewView } from './VideoReview';
@@ -441,6 +443,16 @@ struct Index {
     } else if (name === 'Settings') {
       NavDestination() {
         SettingsView()
+      }.hideTitleBar(true)
+      .onAppear(() => { applyStatusBar('theme'); })
+    } else if (name === 'TestLab') {
+      NavDestination() {
+        TestLabView()
+      }.hideTitleBar(true)
+      .onAppear(() => { applyStatusBar('theme'); })
+    } else if (name === 'SpeechRecognizerDemo') {
+      NavDestination() {
+        SpeechRecognizerDemoView()
       }.hideTitleBar(true)
       .onAppear(() => { applyStatusBar('theme'); })
       .onDisAppear(() => { applyStatusBar('brand'); })
