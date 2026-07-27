@@ -25,6 +25,8 @@ const KEY_REMIND_ON: string = 'plan_remind_on';
 const KEY_REMIND_HOUR: string = 'plan_remind_hour';
 const KEY_REMIND_MIN: string = 'plan_remind_min';
 const KEY_REMIND_ID: string = 'plan_remind_id';
+// 按压态背景色：在受限作用域外预计算为模块级常量，供 todayCard 的 stateStyles 直接引用（避免 stateStyles 内 $r 不可见 / this 触发编译器断言）
+const PRESSED_BG: Resource = $r('app.color.tag_bg');
 // 每日素材洗牌牌堆前缀（_order 洗牌顺序 / _pos 当前位置 / _day 上次投放日），抽完一轮再重洗
 const DECK_MAT: string = 'deck_mat';
 const DECK_KNOW: string = 'deck_know';
@@ -650,7 +652,7 @@ export struct StudyPlan {
     })
     .stateStyles({
       pressed: {
-        .backgroundColor($r('app.color.tag_bg'))   // 按压反馈，提示可点
+        backgroundColor: PRESSED_BG
       }
     })
   }

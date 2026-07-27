@@ -5,9 +5,11 @@ import { DataStore } from '../model/DataStore';
 import { AppData, Question, RatedItem, PracticeSession } from '../model/Types';
 import { UserTagStore } from '../utils/UserTagStore';
 import { FONT, RADIUS, SPACE, SAFE_AREA_TYPES, SAFE_AREA_EDGES } from '../utils/Theme';
-import { PageHero, PageHeader, IconTile, StatCard } from '../utils/Ui';
+import { IconTile, StatCard, SectionTitle } from '../utils/Ui';
 
 const PREF_NAME: string = 'practice';
+// 按压态背景色：在受限作用域外预计算为模块级常量，供 entryRow 的 stateStyles 直接引用（避免 stateStyles 内 $r 不可见 / this 触发编译器断言）
+const PRESSED_BG: Resource = $r('app.color.tag_bg');
 
 @Component
 export struct ProfileView {
@@ -109,31 +111,32 @@ export struct ProfileView {
     this.pageStack.pushPathByName('Settings', {} as Record<string, Object>);
   }
 
-  // 用户信息卡：头像 + 昵称 + 地区，作为个人中心顶部内容，紧贴标题栏
-  @Builder userCard() {
+  // 个人信息 Hero：渐变底 + 头像 + 昵称 + 地区，作为个人中心顶部品牌区
+  @Builder profileHero() {
     Row() {
-      IconTile({ emoji: '🧑', bg: $r('app.color.brand_light'), fg: $r('app.color.brand'), dim: 56 })
+      IconTile({ emoji: '🧑', bg: $r('app.color.on_primary'), fg: $r('app.color.brand'), dim: 64 })
         .margin({ right: SPACE.md })
       Column() {
         Text('面试备考人')
-          .fontSize(FONT.body)
+          .fontSize(FONT.title)
           .fontWeight(FontWeight.Bold)
-          .fontColor($r('app.color.text_primary'))
+          .fontColor($r('app.color.on_primary'))
         Text('鹤壁市 · 综合岗位')
           .fontSize(FONT.caption)
-          .fontColor($r('app.color.text_secondary'))
+          .fontColor($r('app.color.on_primary'))
+          .opacity(0.85)
           .margin({ top: SPACE.xs })
       }
       .alignItems(HorizontalAlign.Start)
       .layoutWeight(1)
     }
     .width('100%')
-    .padding({ left: SPACE.md, right: SPACE.md, top: SPACE.md, bottom: SPACE.md })
-    .backgroundColor($r('app.color.surface'))
-    .borderRadius(RADIUS.md)
-    // 去掉与数据卡的间距，让数据卡紧贴用户卡；用户卡与标题之间保留 PageHeader 自身的底部 padding 作为间距
-    .margin({ top: 0, bottom: 0 })
-    .shadow({ radius: 10, color: $r('app.color.card_stroke'), offsetY: 2 })
+    .padding(SPACE.lg)
+    .backgroundColor($r('app.color.brand'))
+    .linearGradient({ angle: 135, colors: [[$r('app.color.brand'), 0], [$r('app.color.brand_dark'), 1]] })
+    .borderRadius(RADIUS.lg)
+    .margin({ top: SPACE.md, bottom: SPACE.md })
+    .shadow({ radius: 14, color: $r('app.color.card_stroke'), offsetY: 4 })
   }
 
   // 通用入口行：图标块 + 标题 + 副标题 + 箭头
@@ -164,6 +167,11 @@ export struct ProfileView {
     .borderRadius(RADIUS.md)
     .margin({ bottom: SPACE.sm })
     .shadow({ radius: 10, color: $r('app.color.card_stroke'), offsetY: 2 })
+    .stateStyles({
+      pressed: {
+        backgroundColor: PRESSED_BG
+      }
+    })
     .onClick(cb)
   }
 
@@ -195,16 +203,14 @@ export struct ProfileView {
 
   build() {
     Column() {
-      // 品牌头部
-      PageHeader({ title: '我的' })
-
       Scroll() {
         Column() {
-          // 用户信息（头像 + 昵称 + 地区），紧贴标题排布，消除顶部大留白
-          this.userCard()
+          // 顶部品牌区：用户信息
+          this.profileHero()
 
-          // 学习概览：数据卡
+          // 学习概览
           if (this.data) {
+            SectionTitle({ title: '学习概览', sub: '你的备考进度一览' })
             Row() {
               StatCard({ label: '已自评', value: `${this.rated.length}`, unit: '道' })
                 .layoutWeight(1)
@@ -214,11 +220,12 @@ export struct ProfileView {
                 .margin({ left: SPACE.sm })
             }
             .width('100%')
-            .margin({ top: SPACE.sm, bottom: SPACE.sm })
+            .margin({ bottom: SPACE.sm })
           }
 
-          // 素材汇总：点击跳转对应页面（知识点 / 真题库 / 我的标记）
+          // 内容库快捷统计（点击跳转）
           if (this.data) {
+            SectionTitle({ title: '内容库' })
             Row({ space: SPACE.sm }) {
               this.statLink(`${this.data.articles.length}`, '知识点', () => this.onKnowledge())
               this.statLink(`${this.data.questions.length}`, '真题库', () => this.onQuestionBank())
@@ -228,10 +235,14 @@ export struct ProfileView {
             .margin({ bottom: SPACE.sm })
           }
 
-          // 入口卡片
+          // 我的
+          SectionTitle({ title: '我的' })
           this.entryRow('🩷', $r('app.color.accent_soft'), $r('app.color.accent'), '我的收藏', '已收藏的题目与知识点', () => this.onFavorites())
           this.entryRow('📝', $r('app.color.brand_light'), $r('app.color.brand'), '我的学习记录', `已自评 ${this.rated.length} 道`, () => this.onStudyRecord())
           this.entryRow('🎯', $r('app.color.brand_light'), $r('app.color.info'), '我的真题演练记录', `已完成 ${this.sessions.length} 套`, () => this.onExamRecord())
+
+          // 工具与设置
+          SectionTitle({ title: '工具与设置' })
           this.entryRow('📅', $r('app.color.brand_light'), $r('app.color.brand'), '备考计划', '考试倒计时 + 复习任务清单', () => this.onStudyPlan())
           this.entryRow('🧪', $r('app.color.brand_light'), $r('app.color.brand'), '测试功能', '实验性能力调试与演示入口', () => this.onTestLab())
           this.entryRow('⚙️', $r('app.color.brand_light'), $r('app.color.brand'), '设置',
@@ -260,61 +271,104 @@ export struct ProfileView {
 @Preview
 @Component
 struct ProfilePreview {
+  @Builder previewStat(v: string, l: string) {
+    Column() {
+      Text(v)
+        .fontSize(20)
+        .fontWeight(FontWeight.Bold)
+        .fontColor($r('app.color.brand'))
+      Text(l)
+        .fontSize(12)
+        .fontColor($r('app.color.text_secondary'))
+        .margin({ top: 2 })
+    }
+    .layoutWeight(1)
+    .alignItems(HorizontalAlign.Center)
+    .padding({ top: SPACE.md, bottom: SPACE.md })
+    .backgroundColor($r('app.color.surface'))
+    .borderRadius(RADIUS.md)
+  }
+
   build() {
     Column() {
-      Column() {
-        Text('🧑')
-          .fontSize(40)
-        Text('面试备考人')
-          .fontSize(18)
-          .fontWeight(FontWeight.Bold)
-          .fontColor($r('app.color.text_primary'))
-          .margin({ top: 8 })
-        Text('鹤壁市 · 综合岗位')
-          .fontSize(13)
-          .fontColor($r('app.color.text_secondary'))
-          .margin({ top: 4 })
+      // 渐变 Hero
+      Row() {
+        Column() {
+          Text('🧑')
+            .fontSize(30)
+        }
+        .width(64)
+        .height(64)
+        .borderRadius(20)
+        .backgroundColor($r('app.color.on_primary'))
+        .justifyContent(FlexAlign.Center)
+        .alignItems(HorizontalAlign.Center)
+        .margin({ right: SPACE.md })
+        Column() {
+          Text('面试备考人')
+            .fontSize(18)
+            .fontWeight(FontWeight.Bold)
+            .fontColor($r('app.color.on_primary'))
+          Text('鹤壁市 · 综合岗位')
+            .fontSize(13)
+            .fontColor($r('app.color.on_primary'))
+            .opacity(0.85)
+            .margin({ top: 4 })
+        }
+        .alignItems(HorizontalAlign.Start)
+        .layoutWeight(1)
       }
-      .width('100%')
+      .width('92%')
       .padding(SPACE.lg)
-      .alignItems(HorizontalAlign.Center)
+      .backgroundColor($r('app.color.brand'))
+      .linearGradient({ angle: 135, colors: [[$r('app.color.brand'), 0], [$r('app.color.brand_dark'), 1]] })
+      .borderRadius(RADIUS.lg)
+      .margin({ top: 16, bottom: SPACE.sm })
 
+      // 学习概览
       Row() {
         Column() {
           Text('12')
             .fontSize(22)
             .fontWeight(FontWeight.Bold)
             .fontColor($r('app.color.brand'))
-          Text('收藏')
+          Text('已自评')
             .fontSize(12)
             .fontColor($r('app.color.text_secondary'))
+            .margin({ top: 4 })
         }
         .layoutWeight(1)
-        Column() {
-          Text('34')
-            .fontSize(22)
-            .fontWeight(FontWeight.Bold)
-            .fontColor($r('app.color.brand'))
-          Text('已学题')
-            .fontSize(12)
-            .fontColor($r('app.color.text_secondary'))
-        }
-        .layoutWeight(1)
+        .padding(SPACE.lg)
+        .backgroundColor($r('app.color.surface'))
+        .borderRadius(RADIUS.lg)
+        .alignItems(HorizontalAlign.Start)
         Column() {
           Text('4')
             .fontSize(22)
             .fontWeight(FontWeight.Bold)
-            .fontColor($r('app.color.brand'))
-          Text('模考套')
+            .fontColor($r('app.color.accent'))
+          Text('已演练')
             .fontSize(12)
             .fontColor($r('app.color.text_secondary'))
+            .margin({ top: 4 })
         }
         .layoutWeight(1)
+        .padding(SPACE.lg)
+        .backgroundColor($r('app.color.surface'))
+        .borderRadius(RADIUS.lg)
+        .margin({ left: SPACE.sm })
+        .alignItems(HorizontalAlign.Start)
       }
-      .width('90%')
-      .padding(SPACE.lg)
-      .backgroundColor($r('app.color.surface'))
-      .borderRadius(RADIUS.md)
+      .width('92%')
+      .margin({ bottom: SPACE.sm })
+
+      // 内容库
+      Row({ space: SPACE.sm }) {
+        this.previewStat('120', '知识点')
+        this.previewStat('320', '真题库')
+        this.previewStat('8', '我的标记')
+      }
+      .width('92%')
     }
     .width('100%')
     .height('100%')
