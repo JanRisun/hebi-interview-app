@@ -99,12 +99,12 @@ export struct ProfileView {
     this.pageStack.pushPathByName('ExamRecord', {} as Record<string, Object>);
   }
 
-  private onStudyPlan(): void {
-    this.pageStack.pushPathByName('StudyPlan', {} as Record<string, Object>);
+  private onFlashcardCollection(): void {
+    this.pageStack.pushPathByName('FlashcardCollection', {} as Record<string, Object>);
   }
 
-  private onTestLab(): void {
-    this.pageStack.pushPathByName('TestLab', {} as Record<string, Object>);
+  private onStudyPlan(): void {
+    this.pageStack.pushPathByName('StudyPlan', {} as Record<string, Object>);
   }
 
   private onSettings(): void {
@@ -240,11 +240,11 @@ export struct ProfileView {
           this.entryRow('🩷', $r('app.color.accent_soft'), $r('app.color.accent'), '我的收藏', '已收藏的题目与知识点', () => this.onFavorites())
           this.entryRow('📝', $r('app.color.brand_light'), $r('app.color.brand'), '我的学习记录', `已自评 ${this.rated.length} 道`, () => this.onStudyRecord())
           this.entryRow('🎯', $r('app.color.brand_light'), $r('app.color.info'), '我的真题演练记录', `已完成 ${this.sessions.length} 套`, () => this.onExamRecord())
+          this.entryRow('🃏', $r('app.color.brand_light'), $r('app.color.brand'), '速记卡搜集', '瀑布流浏览 · 掌握/未掌握标记', () => this.onFlashcardCollection())
 
           // 工具与设置
           SectionTitle({ title: '工具与设置' })
           this.entryRow('📅', $r('app.color.brand_light'), $r('app.color.brand'), '备考计划', '考试倒计时 + 复习任务清单', () => this.onStudyPlan())
-          this.entryRow('🧪', $r('app.color.brand_light'), $r('app.color.brand'), '测试功能', '实验性能力调试与演示入口', () => this.onTestLab())
           this.entryRow('⚙️', $r('app.color.brand_light'), $r('app.color.brand'), '设置',
             '外观 · 文字大小 · 备考提醒', () => this.onSettings())
         }

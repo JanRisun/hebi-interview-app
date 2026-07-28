@@ -16,6 +16,7 @@ import { ProfileView } from './Profile';
 import { Detail } from './Detail';
 import { SearchPage } from './Search';
 import { Favorites } from './Favorites';
+import { FlashcardCollection } from './FlashcardCollection';
 import { KnowledgeView } from './Knowledge';
 import { QuestionBankView } from './QuestionBank';
 import { MyMarkView } from './MyMark';
@@ -24,14 +25,15 @@ import { ExamRecord } from './ExamRecord';
 import { StudyPlan } from './StudyPlan';
 import { AudioAnswerView } from './AudioAnswer';
 import { AudioReviewView } from './AudioReview';
-import { AICaptionDemoView } from './AICaptionDemo';
-import { TestLabView } from './TestLab';
-import { SpeechRecognizerDemoView } from './SpeechRecognizerDemo';
 import { SettingsView } from './Settings';
 import { VideoAnswerView } from './VideoAnswer';
 import { VideoReviewView } from './VideoReview';
+import { common } from '@kit.AbilityKit';
 import { FONT, SPACE, SAFE_AREA_TYPES, SAFE_AREA_EDGES } from '../utils/Theme';
 import { applyStatusBar } from '../utils/StatusBar';
+
+// 隐私政策地址（AppGallery 上架必填，请替换为真实地址）
+const PRIVACY_POLICY_URL: string = 'https://your-domain.example/privacy.html';
 import { curves } from '@kit.ArkUI';
 import { motion } from '@kit.MultimodalAwarenessKit';
 import { abilityAccessCtrl } from '@kit.AbilityKit';
@@ -64,6 +66,7 @@ struct Index {
   @Provide pageStack: NavPathStack = new NavPathStack();
   // 智感握持：底栏水平偏移（由 motion 感知握持手驱动）
   @State gripOffsetX: number = 0;
+  @State showPrivacy: boolean = false; // 首次启动隐私同意遮罩
 
   // 每个 Tab 项对应的粒子发射器属性（emitRate 动态控制是否爆裂）
   @State emitters: EmitterProperty[][] = [
@@ -109,6 +112,10 @@ struct Index {
     // 仅折叠屏设备启用智感握持跟手；普通手机固定居中，不申请权限、不开启监听
     if (IS_FOLDABLE) {
       this.requestGripPermission();
+    }
+    // 首次启动展示隐私政策同意；未同意则弹窗遮罩，拒绝即退出
+    if (!AppStorage.get<boolean>('privacyAgreed')) {
+      this.showPrivacy = true;
     }
   }
 
@@ -430,33 +437,95 @@ struct Index {
       .onDisAppear(() => {
         applyStatusBar('brand');
       })
-    } else if (name === 'AICaptionDemo') {
-      NavDestination() {
-        AICaptionDemoView()
-      }.hideTitleBar(true)
-      .onAppear(() => {
-        applyStatusBar('theme');
-      })
-      .onDisAppear(() => {
-        applyStatusBar('brand');
-      })
     } else if (name === 'Settings') {
       NavDestination() {
         SettingsView()
       }.hideTitleBar(true)
       .onAppear(() => { applyStatusBar('theme'); })
-    } else if (name === 'TestLab') {
+    } else if (name === 'FlashcardCollection') {
       NavDestination() {
-        TestLabView()
-      }.hideTitleBar(true)
-      .onAppear(() => { applyStatusBar('theme'); })
-    } else if (name === 'SpeechRecognizerDemo') {
-      NavDestination() {
-        SpeechRecognizerDemoView()
+        FlashcardCollection()
       }.hideTitleBar(true)
       .onAppear(() => { applyStatusBar('theme'); })
       .onDisAppear(() => { applyStatusBar('brand'); })
     }
+  }
+
+  // 隐私政策同意遮罩（首次启动，拒绝则退出应用）
+  @Builder privacyMask() {
+    Column() {
+      Column() {
+        Text('隐私政策与用户协议')
+          .fontSize(FONT.title)
+          .fontWeight(FontWeight.Bold)
+          .fontColor($r('app.color.text_title'))
+          .margin({ bottom: SPACE.md })
+        Scroll() {
+          Text('我们非常重视您的隐私。使用前请阅读以下说明：\n\n' +
+            '• 本应用资料本地内置、检索在端侧完成；\n' +
+            '• 开口自测录音仅用于本地回放与端侧转写；\n' +
+            '• 开启「AI 智能评测」时，录音 / 转写文本会经网络发送至第三方语音与大模型服务用于转写与评分；\n' +
+            '• 备考提醒通过系统代理提醒能力推送；\n' +
+            '• 我们不会出售您的个人信息。\n\n' +
+            '完整条款请点击「查看隐私政策」。')
+            .fontSize(FONT.body)
+            .fontColor($r('app.color.text_body'))
+            .lineHeight(1.6)
+        }
+        .layoutWeight(1)
+        .width('100%')
+        Text('查看隐私政策')
+          .fontSize(FONT.body)
+          .fontColor($r('app.color.brand'))
+          .margin({ top: SPACE.sm, bottom: SPACE.md })
+          .onClick(() => this.openPrivacyPolicy())
+        Row() {
+          Button('不同意并退出')
+            .layoutWeight(1)
+            .backgroundColor($r('app.color.btn_neutral_bg'))
+            .fontColor($r('app.color.text_primary'))
+            .onClick(() => this.rejectPrivacy())
+          Button('同意并继续')
+            .layoutWeight(1)
+            .margin({ left: SPACE.sm })
+            .backgroundColor($r('app.color.brand'))
+            .fontColor($r('app.color.on_primary'))
+            .onClick(() => this.agreePrivacy())
+        }
+        .width('100%')
+      }
+      .width('88%')
+      .maxHeight('80%')
+      .padding(SPACE.lg)
+      .backgroundColor($r('app.color.surface'))
+      .borderRadius(RADIUS.lg)
+    }
+    .width('100%')
+    .height('100%')
+    .position({ x: 0, y: 0 })
+    .zIndex(999)
+    .backgroundColor('#80000000')
+    .justifyContent(FlexAlign.Center)
+    .alignItems(HorizontalAlign.Center)
+  }
+
+  private openPrivacyPolicy(): void {
+    try {
+      const ctx = getContext(this) as common.UIAbilityContext;
+      ctx.startAbility({ action: 'ohos.want.action.viewData', uri: PRIVACY_POLICY_URL });
+    } catch (e) {
+      // 无可用浏览器时静默忽略
+    }
+  }
+
+  private agreePrivacy(): void {
+    AppStorage.setOrCreate('privacyAgreed', true);
+    this.showPrivacy = false;
+  }
+
+  private rejectPrivacy(): void {
+    const ctx = getContext(this) as common.UIAbilityContext;
+    ctx.terminateSelf();
   }
 
   build() {
@@ -494,6 +563,10 @@ struct Index {
 
         // 悬浮胶囊底栏（叠加在内容上方，跟随握持手左右平移）
         this.floatingTabBar()
+        // 首次启动隐私同意遮罩（全屏覆盖，未同意前屏蔽交互）
+        if (this.showPrivacy) {
+          this.privacyMask()
+        }
       }
       .width('100%')
       .height('100%')

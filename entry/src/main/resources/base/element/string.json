@@ -3,7 +3,7 @@
     { "name": "module_desc", "value": "鹤壁事业编面试备考" },
     { "name": "EntryAbility_desc", "value": "面试备考主入口" },
     { "name": "EntryAbility_label", "value": "面试上岸" },
-    { "name": "microphone_reason", "value": "用于真题开口自测录音，仅存本机" },
+    { "name": "microphone_reason", "value": "用于真题开口自测录音。录音在本地处理；开启 AI 评测时会联网发送至第三方语音/大模型服务，用于转写与智能评分。" },
     { "name": "vibrate_reason", "value": "模考分段计时到点（思考结束、作答超时）振动提醒考生" },
     { "name": "remind_reason", "value": "用于每日定时推送备考提醒通知" },
     { "name": "bg_running_reason", "value": "语音朗读进行中保持后台运行，避免切到后台时朗读被打断" },

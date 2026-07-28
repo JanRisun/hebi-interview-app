@@ -99,7 +99,7 @@ export struct RecorderBar {
   }
 
   // 端侧转写：录音已是 WAV(PCM 16k/单/16bit)，直接调 AsrHelper 转成文字，存本机并展示。
-  // 全程离线、零密钥、隐私不出本机。
+  // 端侧离线转写（零密钥、录音不出本机）；如需 AI 智能评测将联网上传至第三方服务。
   private async doTranscribe(): Promise<void> {
     if (this.transcribing) return;
     this.transcribing = true;
