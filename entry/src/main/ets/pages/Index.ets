@@ -29,15 +29,16 @@ import { SettingsView } from './Settings';
 import { VideoAnswerView } from './VideoAnswer';
 import { VideoReviewView } from './VideoReview';
 import { common } from '@kit.AbilityKit';
-import { FONT, SPACE, SAFE_AREA_TYPES, SAFE_AREA_EDGES } from '../utils/Theme';
+import { preferences } from '@kit.ArkData';
+import { FONT, SPACE, SAFE_AREA_TYPES, SAFE_AREA_EDGES, RADIUS } from '../utils/Theme';
 import { applyStatusBar } from '../utils/StatusBar';
-
-// 隐私政策地址（AppGallery 上架必填，请替换为真实地址）
-const PRIVACY_POLICY_URL: string = 'https://your-domain.example/privacy.html';
 import { curves } from '@kit.ArkUI';
 import { motion } from '@kit.MultimodalAwarenessKit';
 import { abilityAccessCtrl } from '@kit.AbilityKit';
 import deviceInfo from '@ohos.deviceInfo';
+
+// 隐私政策地址（AppGallery 上架必填，请替换为真实地址）
+const PRIVACY_POLICY_URL: string = 'https://your-domain.example/privacy.html';
 
 // 弹簧曲线（选中回弹反馈）
 const SPRING_CURVE = curves.springCurve(0, 1, 228, 30);
@@ -113,10 +114,15 @@ struct Index {
     if (IS_FOLDABLE) {
       this.requestGripPermission();
     }
-    // 首次启动展示隐私政策同意；未同意则弹窗遮罩，拒绝即退出
-    if (!AppStorage.get<boolean>('privacyAgreed')) {
+    // 首次启动展示隐私政策同意；同意状态用 Preferences 持久化，避免每次进入都弹窗
+    preferences.getPreferences(getContext(this), 'app_pref').then((p: preferences.Preferences) => {
+      if (!p.getSync('privacyAgreed', false)) {
+        this.showPrivacy = true;
+      }
+    }).catch(() => {
+      // 读取失败则保守弹窗，待用户同意
       this.showPrivacy = true;
-    }
+    });
   }
 
   aboutToDisappear(): void {
@@ -461,19 +467,55 @@ struct Index {
           .fontColor($r('app.color.text_title'))
           .margin({ bottom: SPACE.md })
         Scroll() {
-          Text('我们非常重视您的隐私。使用前请阅读以下说明：\n\n' +
-            '• 本应用资料本地内置、检索在端侧完成；\n' +
-            '• 开口自测录音仅用于本地回放与端侧转写；\n' +
-            '• 开启「AI 智能评测」时，录音 / 转写文本会经网络发送至第三方语音与大模型服务用于转写与评分；\n' +
-            '• 备考提醒通过系统代理提醒能力推送；\n' +
-            '• 我们不会出售您的个人信息。\n\n' +
-            '完整条款请点击「查看隐私政策」。')
-            .fontSize(FONT.body)
-            .fontColor($r('app.color.text_body'))
-            .lineHeight(1.6)
+          Column() {
+            Text('我们非常重视您的隐私。使用前请阅读以下说明：')
+              .fontSize(FONT.body)
+              .fontColor($r('app.color.text_body'))
+              .lineHeight(FONT.body + 6)
+              .width('100%')
+            Text('本应用资料本地内置，检索在端侧完成。')
+              .fontSize(FONT.body)
+              .fontColor($r('app.color.text_body'))
+              .lineHeight(FONT.body + 6)
+              .width('100%')
+              .margin({ top: SPACE.sm })
+            Text('开口自测录音仅用于本地回放与端侧转写。')
+              .fontSize(FONT.body)
+              .fontColor($r('app.color.text_body'))
+              .lineHeight(FONT.body + 6)
+              .width('100%')
+              .margin({ top: SPACE.sm })
+            Text('开启「AI 智能评测」时，录音与转写文本会经网络发送至第三方语音与大模型服务，用于转写与评分。')
+              .fontSize(FONT.body)
+              .fontColor($r('app.color.text_body'))
+              .lineHeight(FONT.body + 6)
+              .width('100%')
+              .margin({ top: SPACE.sm })
+            Text('备考提醒通过系统代理提醒能力推送。')
+              .fontSize(FONT.body)
+              .fontColor($r('app.color.text_body'))
+              .lineHeight(FONT.body + 6)
+              .width('100%')
+              .margin({ top: SPACE.sm })
+            Text('我们不会出售您的个人信息。')
+              .fontSize(FONT.body)
+              .fontColor($r('app.color.text_body'))
+              .lineHeight(FONT.body + 6)
+              .width('100%')
+              .margin({ top: SPACE.sm })
+            Text('完整条款请点击下方「查看隐私政策」。')
+              .fontSize(FONT.body)
+              .fontColor($r('app.color.text_body'))
+              .lineHeight(FONT.body + 6)
+              .width('100%')
+              .margin({ top: SPACE.md })
+          }
+          .width('100%')
+          .alignItems(HorizontalAlign.Start)
         }
         .layoutWeight(1)
         .width('100%')
+        .flexShrink(1)
         Text('查看隐私政策')
           .fontSize(FONT.body)
           .fontColor($r('app.color.brand'))
@@ -482,7 +524,7 @@ struct Index {
         Row() {
           Button('不同意并退出')
             .layoutWeight(1)
-            .backgroundColor($r('app.color.btn_neutral_bg'))
+            .backgroundColor($r('app.color.surface_variant'))
             .fontColor($r('app.color.text_primary'))
             .onClick(() => this.rejectPrivacy())
           Button('同意并继续')
@@ -495,7 +537,7 @@ struct Index {
         .width('100%')
       }
       .width('88%')
-      .maxHeight('80%')
+      .height('80%')
       .padding(SPACE.lg)
       .backgroundColor($r('app.color.surface'))
       .borderRadius(RADIUS.lg)
@@ -520,6 +562,15 @@ struct Index {
 
   private agreePrivacy(): void {
     AppStorage.setOrCreate('privacyAgreed', true);
+    // 持久化同意状态，下次进入不再弹窗
+    try {
+      const p: preferences.Preferences =
+        preferences.getPreferencesSync(getContext(this), { name: 'app_pref' });
+      p.putSync('privacyAgreed', true);
+      p.flush();
+    } catch (e) {
+      // 持久化失败时内存态仍生效，仅本次生效
+    }
     this.showPrivacy = false;
   }
 
