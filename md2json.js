@@ -55,13 +55,14 @@ function parseQuestions(file) {
   const blocks = [];
   let cur = null, curHeading = '';
   const blkStart = /^#{1,4}\s*第\s*[一二三四五六七八九十\d]+\s*题/;
-  const setStart = /^###\s*套题\s*[一二三四五六七八九十\d]*/;   // 套题标记（H3）：套题 1 / 套题演练 一
+  const setStart = /^#{2,3}\s*套题\s*[一二三四五六七八九十\d]*/;   // 套题标记（H2/H3）：套题 1 / 套题演练 一
   const sets = [];                 // 本文件发现的套题（有序、去重）
   let setSeen = false;             // 本文件是否含显式套题标记
   let curSetId = '';
   let curSetTitle = '';
   let setCounter = 0;
   let curPart = '';                // 上级「## …部分」标题，作为套题显示前缀
+  const hasBlk = lines.some(l => blkStart.test(l));  // 文件是否含"第X题"标题
   for (const line of lines) {
     const sm = line.match(setStart);
     if (sm) {                      // 遇到套题标记：先收尾上一题块，再开新套
@@ -76,7 +77,8 @@ function parseQuestions(file) {
     const h2 = line.match(/^##\s+(.+?)\s*$/);
     if (h2 && /部分/.test(h2[1])) { curPart = h2[1].replace(/（.*$/, '').trim(); continue; }
     const m = line.match(blkStart);
-    if (m) {
+    const h1Single = !m && !hasBlk && !cur && blocks.length === 0 && !setSeen && /^#\s+(.+?)\s*$/.test(line);
+    if (m || h1Single) {
       if (!setSeen && !curSetId) {   // 无显式套题标记的文件：整份=1套
         setCounter++;
         curSetId = 'set_' + srcCode(srcShort) + '_file';
@@ -107,7 +109,7 @@ function parseQuestions(file) {
 
     // prompt = 题目回顾 / 题目信息 / 题目（去掉 题型、作答时长 两行元数据）
     const promptRaw = Object.entries(secMap)
-      .filter(([k]) => /题目/.test(k))
+      .filter(([k]) => /题目|题干/.test(k))
       .map(([, v]) => v).join('\n');
     let prompt;
     if (promptRaw.trim()) {
@@ -116,7 +118,7 @@ function parseQuestions(file) {
         .filter(l => !l.startsWith('**题型') && !l.startsWith('**作答时长'))
         .join(NL);
     } else {
-      const j = b.lines.findIndex(l => l.includes('**题目'));
+      const j = b.lines.findIndex(l => l.includes('**题目') || l.includes('**题干'));
       if (j >= 0) {
         const p2 = [];
         let same = b.lines[j];
@@ -127,21 +129,30 @@ function parseQuestions(file) {
         if (same) p2.push(same);
         for (let k = j + 1; k < b.lines.length; k++) {
           const l = b.lines[k];
-          if (l.startsWith('**思考时间') || l.startsWith('**作答时间') || l.startsWith('>')) break;
+          if (l.startsWith('**思考时间') || l.startsWith('**作答时间') || l.startsWith('**题型') || l.startsWith('>')) break;
           p2.push(l);
         }
         prompt = stripMd(p2.join(NL));
-      } else prompt = stripMd(b.heading);
+      } else {
+        // 尝试引用行作为题目
+        const quoteLines = b.lines.filter(l => /^\s*>/.test(l));
+        if (quoteLines.length > 0) {
+          prompt = stripMd(quoteLines.map(l => l.replace(/^\s*>\s?/, '')).join('\n'));
+        } else {
+          prompt = stripMd(b.heading);
+        }
+      }
     }
     // answerScript：旧格式取「除题目/复盘外的小节」；新格式取 思考/作答时间 后的正文（去掉 ★贴靠 引用）
-    const ansSecs = secs.filter(x => !/题目/.test(x.heading) && !/作答复盘表/.test(x.heading));
+    const ansSecs = secs.filter(x => !/题目|题干|字数总览/.test(x.heading) && !/作答复盘表/.test(x.heading));
     let answerScript;
     if (ansSecs.length) {
       answerScript = stripMd(ansSecs.map(x =>
         (x.heading ? '【' + x.heading.replace(/【|】/g, '') + '】\n' : '') + x.lines.join('\n')
       ).join('\n\n'));
     } else {
-      const t = b.lines.findIndex(l => /^\s*\*\*作答时间|^\s*\*\*思考时间/.test(l));
+      let t = b.lines.findIndex(l => /^\s*\*\*作答时间|^\s*\*\*思考时间/.test(l));
+      if (t < 0) t = b.lines.findIndex(l => /^\s*\*\*逐字稿/.test(l));
       if (t >= 0) {
         const a = [];
         for (let k = t + 1; k < b.lines.length; k++) {
@@ -230,6 +241,24 @@ function srcName(fn) {
   }
   if (/现象认知逐字稿精选/.test(fn)) return '现象认知精选';
   if (/观点认知逐字稿精选/.test(fn)) return '观点认知精选';
+  if (/2023年4月15日/.test(fn)) return '2023公考4.15';
+  if (/2023年4月16日/.test(fn)) return '2023公考4.16';
+  if (/零散真题五套/.test(fn)) return '零散真题五套';
+  if (/河南遴选郑州/.test(fn)) return '河南遴选郑州';
+  if (/套题A/.test(fn)) return '鹤壁套题A';
+  if (/套题B/.test(fn)) return '鹤壁套题B';
+  if (/套题C/.test(fn)) return '鹤壁套题C';
+  if (/独立题D/.test(fn)) return '鹤壁独立题D';
+  if (/套题22/.test(fn)) return '套题22';
+  if (/三题模考/.test(fn)) return '三题模考';
+  if (/议事机制/.test(fn)) return '议事机制';
+  if (/随手拍/.test(fn)) return '随手拍共治';
+  if (/敬老活动/.test(fn)) return '敬老舆情';
+  if (/闲置车位/.test(fn)) return '闲置车位共享';
+  if (/AI表格|AI数据/.test(fn)) return 'AI数据失真';
+  if (/绿进沙退/.test(fn)) return '绿进沙退';
+  if (/网红村/.test(fn)) return '网红村拥堵';
+  if (/李连成/.test(fn)) return '李连成吃亏经';
   return fn;
 }
 // 来源 -> 短代码（用于生成规整且唯一的 id）
@@ -243,7 +272,25 @@ function srcCode(s) {
   '乡村协理员·验收': 'xcy',
   '乡村协理员·笔记': 'xcb',
   '现象认知精选': 'xgx',
-  '观点认知精选': 'xvg'
+  '观点认知精选': 'xvg',
+  '2023公考4.15': 'gk0415',
+  '2023公考4.16': 'gk0416',
+  '零散真题五套': 'lszt5',
+  '河南遴选郑州': 'hnlx',
+  '鹤壁套题A': 'hbA',
+  '鹤壁套题B': 'hbB',
+  '鹤壁套题C': 'hbC',
+  '鹤壁独立题D': 'hbD',
+  '套题22': 't22',
+  '三题模考': 'stmk',
+  '议事机制': 'ysjz',
+  '随手拍共治': 'ssp',
+  '敬老舆情': 'jlyq',
+  '闲置车位共享': 'xcgw',
+  'AI数据失真': 'aisj',
+  '绿进沙退': 'ljst',
+  '网红村拥堵': 'whc',
+  '李连成吃亏经': 'llc'
 };
   return m[s] || slug(s) || 'x';
 }
@@ -325,7 +372,25 @@ const questionFiles = [
   '04-真题模拟/7.21-鹤壁乡村协理员3道逐字稿_政务小程序_民情恳谈会_邻里纠纷.md',
   '04-真题模拟/7.21-鹤壁乡村协理员3道逐字稿_依规办事_老年助餐_项目验收.md',
   '04-真题模拟/7.15-现象认知逐字稿精选_IMA.md',
-  '04-真题模拟/7.15-观点认知逐字稿精选_IMA.md'
+  '04-真题模拟/7.15-观点认知逐字稿精选_IMA.md',
+  '04-真题模拟/2023年4月15日公务员面试4道逐字稿.md',
+  '04-真题模拟/2023年4月16日公务员面试4道逐字稿.md',
+  '04-真题模拟/20260801_零散真题五套_逐字稿.md',
+  '04-真题模拟/20260802_2024河南遴选郑州4题_逐字稿.md',
+  '04-真题模拟/20260802_鹤壁事业编面试_套题A_乡村振兴基层_逐字稿.md',
+  '04-真题模拟/20260802_鹤壁事业编面试_套题B_基层治理_逐字稿.md',
+  '04-真题模拟/20260802_鹤壁事业编面试_套题C_服务应变_逐字稿.md',
+  '04-真题模拟/20260802_鹤壁事业编面试_独立题D_机关文化_逐字稿.md',
+  '02-逐字稿/套题22_逐字稿.md',
+  '02-逐字稿/三题模考逐字稿_积分治理_爱心驿站_跨部门协调.md',
+  '02-逐字稿/20260805_议事机制群众参与_综合分析_逐字稿.md',
+  '02-逐字稿/20260805_随手拍共治遇阻_对策解决_逐字稿.md',
+  '02-逐字稿/20260805_敬老活动摔倒舆情_应急应变_逐字稿.md',
+  '02-逐字稿/20260805_闲置车位共享_前期调研与创新举措_逐字稿.md',
+  '02-逐字稿/20260805_AI表格数据失真_应急应变_逐字稿.md',
+  '02-逐字稿/20260805_绿进沙退_人与自然和谐共生_综合分析_逐字稿.md',
+  '02-逐字稿/20260806_网红村交通拥堵_疏通达建_应急应变_逐字稿.md',
+  '02-逐字稿/20260807_李连成吃亏经_综合分析_逐字稿.md'
 ];
 const articleFiles = [
   { f: '00-备考总册/鹤壁事业编综合类面试备考总册.md', cat: '主题专项' },
@@ -333,7 +398,8 @@ const articleFiles = [
   { f: '07-IMA知识库整理/知识库总索引与窗口岗优先清单.md', cat: '索引' },
   { f: '07-IMA知识库整理/政府文件_政策素材.md', cat: '政策素材' },
   { f: '07-IMA知识库整理/素材积累_精选.md', cat: '素材积累' },
-  { f: '08-经典理论/背万能系列_经典理论.md', cat: '经典理论' }
+  { f: '08-经典理论/背万能系列_经典理论.md', cat: '经典理论' },
+  { f: '07-IMA知识库整理/鹤壁十有城市_知识库导入版.md', cat: '鹤壁十有' }
 ];
 
 let questions = [];
