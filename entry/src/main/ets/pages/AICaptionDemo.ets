@@ -16,7 +16,6 @@ const TAG: string = 'AICaptionDemo';
 // 与识别引擎安全块大小一致（640 字节 = 20ms @16k16bit 单声道）
 const CHUNK: number = 640;
 
-@Entry
 @Component
 export struct AICaptionDemoView {
   @Consume pageStack: NavPathStack;

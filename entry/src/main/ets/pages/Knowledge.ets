@@ -1,14 +1,14 @@
-// 知识点二级页：顶部搜索框 + 6 个子分类 Tab（考情 / 题型方法 / 专项练习 / 主题专项 / 宣传类专项 / 索引）
+// 知识点二级页：顶部搜索框 + 子分类 Tab（考情置于末位；顺序见下方 K_TABS）
 // 从个人中心「知识点」卡 push 进入，返回走 BackHeader；点击文章进入 Detail。
 import { common } from '@kit.AbilityKit';
 import { DataStore } from '../model/DataStore';
 import { AppData, Article } from '../model/Types';
 import { FONT, RADIUS, SPACE, SAFE_AREA_TYPES, SAFE_AREA_EDGES } from '../utils/Theme';
 import { BackHeader } from '../utils/BackHeader';
-import { IconTile, EmptyState, HighlightText } from '../utils/Ui';
+import { IconTile, EmptyState, HighlightText, SearchBar } from '../utils/Ui';
 
-// 知识点内部 6 个子分类（与 data.json 中 article.category 取值严格对应，顺序即 Tab 顺序）
-const K_TABS: string[] = ['考情', '题型方法', '专项练习', '主题专项', '宣传类专项', '政策素材', '素材积累', '索引', '经典理论'];
+// 知识点内部子分类（与 data.json 中 article.category 取值严格对应，顺序即 Tab 顺序）
+const K_TABS: string[] = ['题型方法', '专项练习', '主题专项', '宣传类专项', '政策素材', '素材积累', '索引', '经典理论', '考情'];
 
 // 详情路由参数（规避 arkts-no-untyped-obj-literals：字面量必须对应显式声明的接口）
 interface DetailParam { id: string; kind: string; kw?: string; cat?: string }
@@ -150,35 +150,8 @@ export struct KnowledgeView {
       // 子页头部（带返回）
       BackHeader({ title: '知识点' })
 
-      // 顶部搜索框（胶囊形 + 搜索图标），输入即在本页知识点内实时检索
-      Row() {
-        Text('🔍')
-          .fontSize(16)
-          .fontColor($r('app.color.text_tertiary'))
-          .margin({ left: SPACE.md, right: SPACE.sm })
-        TextInput({ placeholder: '搜索知识点', text: this.kw })
-          .layoutWeight(1)
-          .height(40)
-          .backgroundColor($r('app.color.transparent'))
-          .padding({ left: SPACE.sm })
-          .onChange((v: string) => {
-            this.kw = v;
-          })
-        if (this.kw) {
-            SymbolGlyph($r('sys.symbol.xmark_circle_fill'))
-              .fontSize(18)
-              .fontColor([$r('app.color.text_tertiary')])
-              .margin({ right: SPACE.md })
-            .onClick(() => {
-              this.kw = '';
-            })
-        }
-      }
-      .width('92%')
-      .backgroundColor($r('app.color.surface'))
-      .borderRadius(RADIUS.pill)
-      .margin({ bottom: SPACE.sm })
-      .shadow({ radius: 10, color: $r('app.color.card_stroke'), offsetY: 2 })
+      // 顶部搜索框（公共 SearchBar，与题库保持一致）
+      SearchBar({ kw: $kw, placeholder: '搜索知识点' })
 
       if (this.data) {
         if (this.kw.trim()) {
@@ -196,6 +169,7 @@ export struct KnowledgeView {
           .width('100%')
           .layoutWeight(1)
           .barMode(BarMode.Scrollable)
+          .barHeight(56)
         }
       } else {
         EmptyState({ emoji: '⏳', text: '加载中…' })

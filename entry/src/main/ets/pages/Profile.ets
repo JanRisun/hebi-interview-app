@@ -111,6 +111,10 @@ export struct ProfileView {
     this.pageStack.pushPathByName('Settings', {} as Record<string, Object>);
   }
 
+  private onTestLab(): void {
+    this.pageStack.pushPathByName('TestLab', {} as Record<string, Object>);
+  }
+
   // 个人信息 Hero：渐变底 + 头像 + 昵称 + 地区，作为个人中心顶部品牌区
   @Builder profileHero() {
     Row() {
@@ -244,6 +248,8 @@ export struct ProfileView {
 
           // 工具与设置
           SectionTitle({ title: '工具与设置' })
+          this.entryRow('🧪', $r('app.color.accent_soft'), $r('app.color.accent'), '测试功能',
+            '实验性能力聚合：AI 字幕 / 语音识别 / 本地知识库', () => this.onTestLab())
           this.entryRow('📅', $r('app.color.brand_light'), $r('app.color.brand'), '备考计划', '考试倒计时 + 复习任务清单', () => this.onStudyPlan())
           this.entryRow('⚙️', $r('app.color.brand_light'), $r('app.color.brand'), '设置',
             '外观 · 文字大小 · 备考提醒', () => this.onSettings())

@@ -4,7 +4,6 @@ import { FONT, RADIUS, SPACE, SAFE_AREA_TYPES, SAFE_AREA_EDGES } from '../utils/
 import { IconTile } from '../utils/Ui';
 import { BackHeader } from '../utils/BackHeader';
 
-@Entry
 @Component
 export struct TestLabView {
   @Consume pageStack: NavPathStack;
@@ -19,6 +18,10 @@ export struct TestLabView {
 
   private onRecognizer(): void {
     this.pageStack.pushPathByName('SpeechRecognizerDemo', {} as Record<string, Object>);
+  }
+
+  private onLocalKnowledge(): void {
+    this.pageStack.pushPathByName('LocalKnowledge', {} as Record<string, Object>);
   }
 
   // 通用入口行：emoji 图标块 + 标题 + 副标题 + 箭头
@@ -72,6 +75,8 @@ export struct TestLabView {
             '对麦克风说话，实时显示识别文字', () => this.onAICaption())
           this.entryRow('🎙️', $r('app.color.brand_light'), $r('app.color.brand'), '语音识别',
             '麦克风实时语音转文字（SpeechRecognizer）', () => this.onRecognizer())
+          this.entryRow('📚', $r('app.color.accent_soft'), $r('app.color.accent'), '本地知识库',
+            '添加 Word / PDF / 图片，形成本地资料库', () => this.onLocalKnowledge())
         }
         .width('100%')
         .padding({ left: SPACE.md, right: SPACE.md, top: SPACE.sm, bottom: this.safeBottom + SPACE.lg })

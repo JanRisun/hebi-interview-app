@@ -7,10 +7,10 @@ import { common } from '@kit.AbilityKit';
 import { DataStore } from '../model/DataStore';
 import { AppData, Article } from '../model/Types';
 import { FONT, RADIUS, SPACE, SAFE_AREA_TYPES, SAFE_AREA_EDGES } from '../utils/Theme';
-import { PageHeader, EmptyState, IconTile, HighlightText } from '../utils/Ui';
+import { PageHeader, EmptyState, IconTile, HighlightText, SearchBar } from '../utils/Ui';
 
 // 二级页同款 6 个分类（与 Knowledge.ets 保持一致）
-const K_TABS: string[] = ['考情', '题型方法', '专项练习', '主题专项', '宣传类专项', '政策素材', '素材积累', '索引', '经典理论'];
+const K_TABS: string[] = ['题型方法', '专项练习', '主题专项', '宣传类专项', '政策素材', '素材积累', '索引', '经典理论', '考情'];
 
 // 详情路由参数（规避 arkts-no-untyped-obj-literals：字面量必须对应显式声明的接口）
 interface DetailParam { id: string; kind: string; kw?: string; cat?: string }
@@ -108,28 +108,26 @@ export struct CategoryView {
     .onClick(() => this.openArticle(a))
   }
 
-  // 浏览态：单个分类内容（空态居中、有数据贴顶）
+  // 浏览态：单个分类内容（与 Knowledge.ets / QuestionBank.ets 同款：List 撑满 + 居中 + 顶部间距）
   @Builder
   private tabList(cat: string) {
-    Column() {
-      if (this.articlesOf(cat).length === 0) {
-        EmptyState({ emoji: '📭', text: `「${cat}」下还没有内容` })
-      } else {
-        List() {
-          ForEach(this.articlesOf(cat), (a: Article) => {
-            ListItem() {
-              this.essayRow(a)
-            }
-          }, (a: Article) => a.id)
-        }
-        .width('92%')
+    if (this.articlesOf(cat).length === 0) {
+      EmptyState({ emoji: '📭', text: `「${cat}」下还没有内容` })
+        .width('100%')
         .layoutWeight(1)
+    } else {
+      List() {
+        ForEach(this.articlesOf(cat), (a: Article) => {
+          ListItem() {
+            this.essayRow(a)
+          }
+        }, (a: Article) => a.id)
       }
+      .width('92%')
+      .height('100%')
+      .alignSelf(ItemAlign.Center)
+      .margin({ top: SPACE.sm })
     }
-    .width('100%')
-    .height('100%')
-    .justifyContent(this.articlesOf(cat).length === 0 ? FlexAlign.Center : FlexAlign.Start)
-    .alignItems(HorizontalAlign.Center)
   }
 
   // 检索态：跨分类结果（空态居中、有数据贴顶）
@@ -164,40 +162,11 @@ export struct CategoryView {
       // 品牌头部（主 Tab 统一样式）
       PageHeader({ title: '知识库' })
 
-      // 搜索框：胶囊 + 🔍 + 清空，输入即跨分类检索
-      Row() {
-        Text('🔍')
-          .fontSize(16)
-          .fontColor($r('app.color.text_hint'))
-          .margin({ left: SPACE.md, right: SPACE.sm })
-        TextInput({
-          placeholder: this.data ? `搜索 ${this.data.articles.length} 条知识点` : '搜索知识点',
-          text: this.kw
-        })
-          .layoutWeight(1)
-          .backgroundColor(Color.Transparent)
-          .borderWidth(0)
-          .fontSize(FONT.body)
-          .fontColor($r('app.color.text_primary'))
-          .placeholderColor($r('app.color.text_hint'))
-          .onChange((v: string) => {
-            this.kw = v;
-          })
-        if (this.kw.trim()) {
-          Text('✕')
-            .fontSize(16)
-            .fontColor($r('app.color.text_hint'))
-            .margin({ right: SPACE.md })
-            .onClick(() => {
-              this.kw = '';
-            })
-        }
-      }
-      .width('92%')
-      .height(44)
-      .backgroundColor($r('app.color.surface'))
-      .borderRadius(RADIUS.pill)
-      .margin({ top: SPACE.sm, bottom: SPACE.sm })
+      // 搜索框（公共 SearchBar，与 Knowledge.ets 保持一致）
+      SearchBar({
+        kw: $kw,
+        placeholder: this.data ? `搜索 ${this.data.articles.length} 条知识点` : '搜索知识点'
+      })
 
       if (!this.data) {
         EmptyState({ emoji: '⏳', text: '加载中…' })
@@ -217,7 +186,7 @@ export struct CategoryView {
         .layoutWeight(1)
         .barMode(BarMode.Scrollable)
         .barPosition(BarPosition.Start)
-        .barHeight(44)
+        .barHeight(56)
         .backgroundColor($r('app.color.background'))
         .onChange((idx: number) => {
           this.activeTab = idx;

@@ -28,6 +28,10 @@ import { AudioReviewView } from './AudioReview';
 import { SettingsView } from './Settings';
 import { VideoAnswerView } from './VideoAnswer';
 import { VideoReviewView } from './VideoReview';
+import { TestLabView } from './TestLab';
+import { AICaptionDemoView } from './AICaptionDemo';
+import { SpeechRecognizerDemoView } from './SpeechRecognizerDemo';
+import { LocalKnowledgeView } from './LocalKnowledge';
 import { common } from '@kit.AbilityKit';
 import { preferences } from '@kit.ArkData';
 import { FONT, SPACE, SAFE_AREA_TYPES, SAFE_AREA_EDGES, RADIUS } from '../utils/Theme';
@@ -451,6 +455,30 @@ struct Index {
     } else if (name === 'FlashcardCollection') {
       NavDestination() {
         FlashcardCollection()
+      }.hideTitleBar(true)
+      .onAppear(() => { applyStatusBar('theme'); })
+      .onDisAppear(() => { applyStatusBar('brand'); })
+    } else if (name === 'TestLab') {
+      NavDestination() {
+        TestLabView()
+      }.hideTitleBar(true)
+      .onAppear(() => { applyStatusBar('theme'); })
+      .onDisAppear(() => { applyStatusBar('brand'); })
+    } else if (name === 'AICaptionDemo') {
+      NavDestination() {
+        AICaptionDemoView()
+      }.hideTitleBar(true)
+      .onAppear(() => { applyStatusBar('theme'); })
+      .onDisAppear(() => { applyStatusBar('brand'); })
+    } else if (name === 'SpeechRecognizerDemo') {
+      NavDestination() {
+        SpeechRecognizerDemoView()
+      }.hideTitleBar(true)
+      .onAppear(() => { applyStatusBar('theme'); })
+      .onDisAppear(() => { applyStatusBar('brand'); })
+    } else if (name === 'LocalKnowledge') {
+      NavDestination() {
+        LocalKnowledgeView()
       }.hideTitleBar(true)
       .onAppear(() => { applyStatusBar('theme'); })
       .onDisAppear(() => { applyStatusBar('brand'); })

@@ -176,6 +176,48 @@ export struct PageHeader {
   }
 }
 
+// 通用搜索栏：胶囊形 + 搜索图标 + 清空按钮，输入即实时检索。
+// 题库 / 知识库共用，保证两页搜索栏的高度、圆角、内边距、阴影、位置完全一致。
+@Component
+export struct SearchBar {
+  @Link kw: string;                       // 双向绑定父组件的搜索词
+  @Prop placeholder: string = '搜索';
+  // 输入回调：父组件可在此做额外处理（如题库滚动归零）；默认空实现
+  onInput: (value: string) => void = () => {};
+
+  build() {
+    Row() {
+      Text('🔍')
+        .fontSize(16)
+        .fontColor($r('app.color.text_tertiary'))
+        .margin({ left: SPACE.md, right: SPACE.sm })
+      TextInput({ placeholder: this.placeholder, text: this.kw })
+        .layoutWeight(1)
+        .height(40)
+        .backgroundColor($r('app.color.transparent'))
+        .padding({ left: SPACE.sm })
+        .onChange((v: string) => {
+          this.kw = v;
+          this.onInput(v);
+        })
+      if (this.kw) {
+        SymbolGlyph($r('sys.symbol.xmark_circle_fill'))
+          .fontSize(18)
+          .fontColor([$r('app.color.text_tertiary')])
+          .margin({ right: SPACE.md })
+          .onClick(() => {
+            this.kw = '';
+          })
+      }
+    }
+    .width('92%')
+    .backgroundColor($r('app.color.surface'))
+    .borderRadius(RADIUS.pill)
+    .margin({ bottom: SPACE.sm })
+    .shadow({ radius: 10, color: $r('app.color.card_stroke'), offsetY: 2 })
+  }
+}
+
 // 页面品牌头部：渐变底 + 图标 + 大标题 + 副标题，用于各 Tab 页顶部，替代孤零零的标题文字
 @Component
 export struct PageHero {

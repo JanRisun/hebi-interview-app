@@ -16,7 +16,6 @@ import { FONT, RADIUS, SPACE, SAFE_AREA_TYPES, SAFE_AREA_EDGES } from '../utils/
 
 const CHUNK: number = 1280; // writeAudio 严格块长（640 的整数倍，单块约 80ms @16k*2）
 
-@Entry
 @Component
 export struct SpeechRecognizerDemoView {
   @Consume pageStack: NavPathStack;
