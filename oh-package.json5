@@ -1,6 +1,6 @@
 {
   "modelVersion": "6.0.2",
-  "name": "interviewprep",
+  "name": "hebi-interview-app",
   "version": "1.0.0",
   "description": "鹤壁市事业单位综合类面试备考",
   "dependencies": {},
