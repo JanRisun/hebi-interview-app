@@ -1,7 +1,9 @@
 {
   "app": {
-    "bundleName": "com.example.interviewprep",
-    "vendor": "example",
+    "bundleName": "com.hebi.shangan",
+    "vendor": "hebi",
+    // versionCode 编码公式：MAJOR*1000000 + MINOR*10000 + PATCH*100（例：1.0.0 → 1000000，1.1.0 → 1010000）
+    // AppGallery 规则：每次提交必须严格大于上一次，且用过的值不可回退/复用，改发版时本行与 versionName 一并递增
     "versionCode": 1000000,
     "versionName": "1.0.0",
     "icon": "$media:app_icon",
