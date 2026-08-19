@@ -41,8 +41,8 @@ import { motion } from '@kit.MultimodalAwarenessKit';
 import { abilityAccessCtrl } from '@kit.AbilityKit';
 import deviceInfo from '@ohos.deviceInfo';
 
-// 隐私政策地址（AppGallery 上架必填，请替换为真实地址）
-const PRIVACY_POLICY_URL: string = 'https://your-domain.example/privacy.html';
+// 隐私政策地址（AppGallery 上架必填，托管于 Gitee 公开仓库 Raw 直链）
+const PRIVACY_POLICY_URL: string = 'https://gitee.com/maven27/hebi-interview-app/raw/master/privacy.html';
 
 // 弹簧曲线（选中回弹反馈）
 const SPRING_CURVE = curves.springCurve(0, 1, 228, 30);
